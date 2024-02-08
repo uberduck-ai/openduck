@@ -1,2 +1,3 @@
 setuptools
 fastapi
+aioboto3
