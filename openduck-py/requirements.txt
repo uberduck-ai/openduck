@@ -1,3 +1,5 @@
 setuptools
 fastapi
 aioboto3
+sqlalchemy
+databases
