@@ -1,5 +1,7 @@
-setuptools
-fastapi
 aioboto3
-sqlalchemy
 databases
+fastapi
+setuptools
+sqlalchemy
+uvicorn[standard]
+websockets
