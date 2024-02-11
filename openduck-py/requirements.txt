@@ -1,6 +1,8 @@
 aioboto3
 databases
+daily-python
 fastapi
+requests
 setuptools
 sqlalchemy
 uvicorn[standard]
