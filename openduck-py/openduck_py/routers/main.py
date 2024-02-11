@@ -5,7 +5,7 @@ from openduck_py.routers.voice import voice_router
 openapi_url = None
 IS_DEV = True
 if IS_DEV:
-    servers = [{"url": "http://localhost:8003"}]
+    servers = [{"url": "http://localhost:8000"}]
 else:
     servers = [{"url": "https://api.uberduck.ai"}]
 app = FastAPI(
@@ -14,4 +14,9 @@ app = FastAPI(
     servers=servers,
     debug=IS_DEV,
 )
+
 app.include_router(voice_router)
+
+@app.get("/status")
+def status():
+    return dict(status="OK")

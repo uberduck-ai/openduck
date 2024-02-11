@@ -20,12 +20,6 @@ connection_string = (
 async_connection_string = (
     f"postgresql+asyncpg://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}"
 )
-database = databases.Database(
-    f"postgresql://{DB_HOST}",
-    user=DB_USER,
-    password=DB_PASSWORD,
-    port=DB_PORT,
-)
 
 
 class UberBase:
