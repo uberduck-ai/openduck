@@ -2,7 +2,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from openduck_py.utils.third_party_tts import aio_polly_tts
-from openduck_py.models.voice import DBVoice
+from openduck_py.models import DBVoice
 from openduck_py.db import get_db_async, AsyncSession
 
 voice_router = APIRouter(prefix="/voice")
@@ -10,16 +10,13 @@ voice_router = APIRouter(prefix="/voice")
 
 @voice_router.post("/text-to-speech", include_in_schema=False)
 async def text_to_speech(
-    text: str,
     db: AsyncSession = Depends(get_db_async),
 ):
-    voice_id = "906471f3-efa1-4410-978e-c105ac4fad61"
-
-    db_voice = db.execute(
-        select(DBVoice).where(DBVoice.voicemodel_uuid == voice_id)
-    ).scalar_one()
-
-    print(db_voice)
+    voice_uuid = "906471f3-efa1-4410-978e-c105ac4fad61"
+    voice = await db.execute(
+        select(DBVoice).where(DBVoice.voice_uuid == voice_uuid).limit(1)
+    )
+    print(voice)
 
     request_id = str(uuid4())
     upload_path = f"{request_id}/output.mp3"

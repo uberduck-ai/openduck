@@ -1,6 +1,5 @@
 from setuptools import find_packages, setup
 
-# TODO (Sam): update.
 setup(
     name="openduck-py",
     version="0.0.1",
