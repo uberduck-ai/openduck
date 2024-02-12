@@ -39,3 +39,4 @@ async def aio_polly_tts(
             await upload_to_s3_bucket(
                 response["AudioStream"], "uberduck-audio-outputs", upload_path
             )
+        return response

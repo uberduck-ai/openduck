@@ -1,9 +1,14 @@
+import base64
 from uuid import uuid4
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+
+from fastapi import APIRouter, Depends, WebSocket
+
+# from sqlalchemy import select
+
 from openduck_py.utils.third_party_tts import aio_polly_tts
 from openduck_py.models import DBVoice
 from openduck_py.db import get_db_async, AsyncSession
+from openduck_py.utils.s3 import async_session, upload_to_s3_bucket
 
 voice_router = APIRouter(prefix="/voice")
 
@@ -33,3 +38,35 @@ async def text_to_speech(
         uuid=request_id,
         path=f"https://uberduck-audio-outputs.s3-us-west-2.amazonaws.com/{upload_path}",
     )
+
+
+@voice_router.websocket("/text-to-speech/ws")
+async def tts_websocket(websocket: WebSocket):
+    await websocket.accept()
+    i = 0
+    while True:
+        message = await websocket.receive_json()
+        if "text" not in message:
+            # Close the connection
+            await websocket.send_json(
+                {"message": "empty text received. closing socket."}
+            )
+            await websocket.close()
+            return
+        print(message)
+        text = message["text"]
+
+        async with async_session().client("polly", region_name="us-west-2") as polly:
+            response = await polly.synthesize_speech(
+                Text=text,
+                VoiceId="Aditi",
+                OutputFormat="mp3",
+                LanguageCode="en-IN",
+                Engine="standard",
+            )
+            stream = response["AudioStream"]
+            # Read and write the stream in chunks
+            async for chunk in stream.iter_chunks():
+                await websocket.send_json(
+                    {"audio": base64.b64encode(chunk).decode("utf-8")}
+                )
