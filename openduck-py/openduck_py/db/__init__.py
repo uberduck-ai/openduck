@@ -1,6 +1,5 @@
 import os
 from urllib.parse import quote_plus
-import databases
 from sqlalchemy import select, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import configure_mappers, declarative_base, sessionmaker
@@ -14,12 +13,16 @@ DB_USER = "uberduck"
 DB_PASSWORD = os.environ["POSTGRESQL_PASSWORD"]
 DB_PORT = os.environ.get("POSTGRESQL_PORT", 5432)
 
-connection_string = (
-    f"postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}"
-)
-async_connection_string = (
-    f"postgresql+asyncpg://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}"
-)
+# connection_string = (
+#     f"postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}"
+# )
+# async_connection_string = (
+#     f"postgresql+asyncpg://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}"
+# )
+
+# Create a connection string for sqlite instead of postgres
+connection_string = "sqlite:///test.db"
+async_connection_string = "sqlite+aiosqlite:///test.db"
 
 
 class UberBase:
@@ -55,13 +58,13 @@ make_searchable(Base.metadata)
 configure_mappers()
 
 echo = True
-engine = create_engine(connection_string, echo=echo, pool_size=100, max_overflow=200)
+engine = create_engine(connection_string, echo=echo)
 Session = sessionmaker(bind=engine)
 kwargs = {
     "pool_size": 100,
     "max_overflow": 200,
 }
-async_engine = create_async_engine(async_connection_string, echo=echo, **kwargs)
+async_engine = create_async_engine(async_connection_string, echo=echo)
 SessionAsync = sessionmaker(
     bind=async_engine,
     expire_on_commit=False,
