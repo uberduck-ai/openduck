@@ -1,9 +1,15 @@
+alembic
+aiosqlite
 aioboto3
+azure-cognitiveservices-speech
 databases
 daily-python
 fastapi
+google-cloud-texttospeech
+openai
 requests
 setuptools
 sqlalchemy
+sqlalchemy_utils
 uvicorn[standard]
 websockets

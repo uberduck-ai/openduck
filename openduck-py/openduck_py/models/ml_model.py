@@ -7,7 +7,7 @@ from sqlalchemy import (
     Integer,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import relationship
 from openduck_py.db import Base
@@ -31,7 +31,7 @@ class DBMLModel(Base):
     # - symbol_set
     # - has_speaker_embedding
     # TODO (Matthew): Let's make nullable columns for the keys we need and move them out of the JSON
-    config = Column(MutableDict.as_mutable(JSONB))
+    config = Column(JSON)
 
     user = relationship("DBUser", backref="models")
 

@@ -12,11 +12,12 @@ voice_router = APIRouter(prefix="/voice")
 async def text_to_speech(
     db: AsyncSession = Depends(get_db_async),
 ):
-    voice_id = "906471f3-efa1-4410-978e-c105ac4fad61"
+    voice_uuid = "906471f3-efa1-4410-978e-c105ac4fad61"
     voice = await db.execute(
-        select(DBVoice).where(DBVoice.voicemodel_uuid == voice_id).limit(1)
+        select(DBVoice).where(DBVoice.voice_uuid == voice_uuid).limit(1)
     )
     print(voice)
+
     request_id = str(uuid4())
     upload_path = f"{request_id}/output.mp3"
     text = "Il était une fois, dans un petit village pittoresque en France, deux âmes solitaires dont les chemins étaient destinés à se croiser. Juliette, une jeune fleuriste passionnée par les couleurs et les parfums de ses fleurs, passait ses journées à embellir la vie des villageois avec ses bouquets enchanteurs. De l'autre côté du village vivait Étienne, un poète timide dont les vers capturaient la beauté et la mélancolie de la vie, mais qui gardait ses poèmes pour lui, craignant qu'ils ne soient pas à la hauteur du monde extérieur."
