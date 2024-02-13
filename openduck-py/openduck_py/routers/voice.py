@@ -31,12 +31,7 @@ async def text_to_speech(
     request: TTSRequest,
     db: AsyncSession = Depends(get_db_async),
 ) -> TTSResponse:
-    """Generate speech from text.
-
-
-    TODO(zach): This is intended to be the first api endpoint in the V2 API.
-    Move it from here to V2.
-    """
+    """Generate speech from text"""
     voice = await aio_first_scalar(db, DBVoice.get(voice_uuid=request.voice_uuid))
     voice_uuid = request.voice_uuid
     # TODO(Matthew): Add mixpanel
