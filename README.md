@@ -6,7 +6,7 @@ Make it easy to build interactive, open, multimodal AI software and hardware pro
 
 Our kids should grow up in a household full of hackable droids they can play with, work on, and learn from.
 
-<img src="goal.webp" width="250px"/>
+<img src="goal.webp" width="450px"/>
 
 ## Setup
 
