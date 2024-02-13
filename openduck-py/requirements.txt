@@ -1,6 +1,7 @@
 alembic
 aiosqlite
 aioboto3
+asgiref
 azure-cognitiveservices-speech
 databases
 daily-python

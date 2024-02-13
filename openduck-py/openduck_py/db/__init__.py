@@ -72,3 +72,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+async def aio_first_scalar(session: AsyncSession, query):
+    return (await session.execute(query)).scalars().first()
