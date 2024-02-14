@@ -1,6 +1,8 @@
 import os
+import re
 import aioboto3
 import boto3
+from pathlib import Path
 
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
@@ -38,3 +40,18 @@ def upload_fileobj(object_name, bucket, fo):
 def delete_object(bucket, object):
     _client = s3_client()
     _client.delete_object(Bucket=bucket, Key=object)
+
+
+def download_file(object_name, bucket, path=None):
+    safe_name = re.sub(r"[^.0-9a-zA-Z_-]", "_", object_name)
+    if path is None:
+        path = str(Path("/tmp") / Path(safe_name))
+    if Path(path).exists() and Path(path).stat().st_size > 0:
+        return path
+    if os.path.dirname(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    _client = s3_client()
+    with open(path, "wb") as f:
+        _client.download_fileobj(bucket, object_name, f)
+    assert Path(path).exists(), f"{path} does not exist"
+    return path
