@@ -2,7 +2,6 @@ from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Index, Text
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.dialects.sqlite import JSON
 from openduck_py.db import Base
 

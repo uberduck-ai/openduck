@@ -1,12 +1,17 @@
 alembic
 aiosqlite
 aioboto3
+asyncpg
 azure-cognitiveservices-speech
 databases
 daily-python
 fastapi
 google-cloud-texttospeech
+passlib
+propelauth_fastapi
+python-jose==3.3.0
 openai
+openai-whisper
 pytest
 requests
 setuptools

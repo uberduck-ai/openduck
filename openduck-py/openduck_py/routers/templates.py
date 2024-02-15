@@ -16,10 +16,10 @@ from openduck_py.models import (
     DBTemplatePrompt,
     DBTemplateDeployment,
     DBUser,
-    DBUserUsage,
 )
 from openduck_py.db import get_db_async
-from openduck_py.dependencies import get_user_sqlalchemy
+
+from openduck_py.auth import get_user_sqlalchemy
 from openduck_py.utils.utils import make_url_name, track_async, aio_rate_limit
 
 client = AsyncAzureOpenAI(
@@ -417,23 +417,7 @@ async def prompt_generate(
     db_template.meta_json["completion"] = [completion]
     await db.commit()
 
-    model = db_template.model or DEFAULT_MODEL
-    if model == "gpt-35-turbo-deployment":
-        await DBUserUsage.aio_upsert(
-            db,
-            user.id,
-            prompt_tokens_gpt_35=response.usage.prompt_tokens,
-            completion_tokens_gpt_35=response.usage.completion_tokens,
-        )
-    elif model == "gpt-4-deployment":
-        await DBUserUsage.aio_upsert(
-            db,
-            user.id,
-            prompt_tokens_gpt_4=response.usage.prompt_tokens,
-            completion_tokens_gpt_4=response.usage.completion_tokens,
-        )
-    else:
-        raise ValueError(f"Wrong model type: {model}")
+    # TODO(Matthew): Add model use to DBUserUsage?
     return response
 
 
