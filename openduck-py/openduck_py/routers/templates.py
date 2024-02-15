@@ -20,7 +20,7 @@ from openduck_py.models import (
 from openduck_py.db import get_db_async
 
 from openduck_py.auth import get_user_sqlalchemy
-from openduck_py.utils.utils import make_url_name, track_async, aio_rate_limit
+from openduck_py.utils.utils import make_url_name
 
 client = AsyncAzureOpenAI(
     azure_endpoint="https://uberduck-azure-openai.openai.azure.com/",
@@ -159,11 +159,11 @@ async def create_template(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> TemplateResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Created template prompt",
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Created template prompt",
+    # )
     url_name = make_url_name(template_request.display_name)
 
     check_prompt_variables(template_request.prompt, template_request.variables)
@@ -194,8 +194,8 @@ async def get_prompts(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> GetTemplatesResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(user.email, "[Templates] Get prompt request")
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(user.email, "[Templates] Get prompt request")
     statement = (
         select(DBTemplatePrompt)
         .filter(
@@ -218,12 +218,12 @@ async def get_prompt(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> GetTemplatesResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Get prompt request",
-        dict(promptUUID=uuid),
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Get prompt request",
+    #     dict(promptUUID=uuid),
+    # )
     statement = select_prompt(db, user, uuid).order_by(
         DBTemplatePrompt.created_at.desc()
     )
@@ -237,11 +237,11 @@ async def get_deployments(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> GetTemplatesResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Get deployment request",
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Get deployment request",
+    # )
     statement = (
         select(DBTemplateDeployment)
         .filter(
@@ -264,12 +264,12 @@ async def get_deployment(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> GetTemplatesResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Get deployment request",
-        dict(deploymentUrlName=url_name),
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Get deployment request",
+    #     dict(deploymentUrlName=url_name),
+    # )
     statement = select_deployment(db, user, url_name).order_by(
         DBTemplateDeployment.created_at.desc()
     )
@@ -285,7 +285,7 @@ async def edit_prompt(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> TemplateResponse:
-    await track_async(user.email, "[Templates] Edited template prompt")
+    # await track_async(user.email, "[Templates] Edited template prompt")
     statement = select_prompt(db, user, uuid)
     db_template = await execute_or_error(db, statement)
     if edit_request.display_name is not None:
@@ -312,12 +312,12 @@ async def delete_prompt(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> StatusResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Deleted template prompt",
-        dict(promptUUID=uuid),
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Deleted template prompt",
+    #     dict(promptUUID=uuid),
+    # )
     statement = select_prompt(db, user, uuid)
     db_template = await execute_or_error(db, statement)
     db_template.deleted_at = datetime.utcnow()
@@ -331,12 +331,12 @@ async def delete_deployment(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> StatusResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Deleted template deployment",
-        dict(deploymentUrlName=url_name),
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Deleted template deployment",
+    #     dict(deploymentUrlName=url_name),
+    # )
     statement = select_deployment(db, user, url_name)
     db_template = await execute_or_error(db, statement)
     db_template.deleted_at = datetime.utcnow()
@@ -396,12 +396,12 @@ async def prompt_generate(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> Optional[GenerationResponse]:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Generated completion from prompt",
-        dict(promptUUID=uuid),
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Generated completion from prompt",
+    #     dict(promptUUID=uuid),
+    # )
     statement = select_prompt(db, user, uuid)
     db_template = await execute_or_error(db, statement)
     check_variables(
@@ -428,12 +428,12 @@ async def deployment_generate(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> Optional[GenerationResponse]:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Generated completion from deployment",
-        dict(deploymentUrlName=url_name),
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Generated completion from deployment",
+    #     dict(deploymentUrlName=url_name),
+    # )
     statement = select_deployment(db, user, url_name)
     db_template = await execute_or_error(db, statement)
     check_variables(
@@ -472,12 +472,12 @@ async def deploy_prompt(
     user: DBUser = Depends(get_user_sqlalchemy),
     db: AsyncSession = Depends(get_db_async),
 ) -> TemplateResponse:
-    await aio_rate_limit(user, rate_limit_type="templates")
-    await track_async(
-        user.email,
-        "[Templates] Deployed prompt",
-        dict(promptUUID=prompt_uuid),
-    )
+    # await aio_rate_limit(user, rate_limit_type="templates")
+    # await track_async(
+    #     user.email,
+    #     "[Templates] Deployed prompt",
+    #     dict(promptUUID=prompt_uuid),
+    # )
     statement = select_prompt(db, user, prompt_uuid)
     db_prompt = await execute_or_error(db, statement)
     deploy_url_name = make_url_name(deploy_request.display_name)
