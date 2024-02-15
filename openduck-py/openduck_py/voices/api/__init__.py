@@ -85,8 +85,8 @@ def inference(
     beta=0.0,
     diffusion_steps=30,
     embedding_scale=5,
-    # bps=1.5,
-    # nlines=1,
+    bps=1.5,
+    nlines=1,
     warm_start_index=0,
 ):
     textcleaner = TextCleaner()
@@ -159,6 +159,8 @@ def inference(
         asr_new[:, :, 1:] = asr[:, :, 0:-1]
         asr = asr_new
 
+        hop_length = 600
+        sample_rate = 24000
         out = model.decoder(asr, F0_pred, N_pred, ref.squeeze().unsqueeze(0))
         warm_start_time = int(pred_dur[:warm_start_index].sum() * hop_length)
 

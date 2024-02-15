@@ -35,7 +35,7 @@ from .api.models import (
     load_f0_models,
 )
 from .api.utils.plbert.util import load_plbert
-from openduck_py.utils.s3 import download_file
+from openduck_py.utils.s3 import download_file, upload_file
 
 
 _to_mel = torchaudio.transforms.MelSpectrogram(
@@ -349,7 +349,7 @@ def styletts2_inference(
         filepath = f.name
         write_wav(filepath, SAMPLE_RATE, audio_array)
         print(f"Uploading {filepath} to s3://{output_bucket}/{output_path}")
-        app.s3.upload_file(filepath, output_bucket, output_path)
+        upload_file(output_path, output_bucket, path=filepath)
         s3_url = f"https://{output_bucket}.s3.us-west-2.amazonaws.com/{output_path}"
         print(f'Wrote audio for "{text}" to {s3_url}')
 
