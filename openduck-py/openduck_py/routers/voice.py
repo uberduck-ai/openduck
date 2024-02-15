@@ -34,17 +34,3 @@ async def text_to_speech(
         uuid=request_id,
         path=f"https://uberduck-audio-outputs.s3-us-west-2.amazonaws.com/{upload_path}",
     )
-
-
-# @voice_router.post("/audio/completion", include_in_schema=False)
-# async def plushy_response(
-#     db: AsyncSession = Depends(get_db_async),
-# ):
-#     # TODO: get the audio from the HTTP request
-#     model = whisper.load_model("base")
-#     text = model.transcribe(audio)
-#     response_text = deployment_generate(
-#         text,
-#     )
-#     response_audio = styletts2(response_text)
-#     return dict(response_audio=response_audio)
