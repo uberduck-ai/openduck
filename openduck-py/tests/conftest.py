@@ -11,7 +11,7 @@ from openduck_py.db import connection_string, Base
 from openduck_py.models import DBUser, DBTemplatePrompt, DBTemplateDeployment
 from openduck_py.routers.templates import DEFAULT_MODEL
 from openduck_py.routers.main import app
-from openduck_py.auth.auth import propel_auth
+from openduck_py.auth import propel_auth
 
 engine = create_engine(connection_string)
 Session = scoped_session(sessionmaker(bind=engine))
