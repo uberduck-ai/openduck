@@ -38,9 +38,9 @@ DEFAULT_MODEL: ModelLiteral = "gpt-35-turbo-deployment"
 class TemplateRequest(BaseModel):
     display_name: str
     prompt: Optional[str] = ""
-    variables: Optional[List[str]] = []
-    values: Optional[List[Dict[str, str]]] = [{}]
-    model: Optional[ModelLiteral]
+    variables: Optional[List[str]] = None
+    values: Optional[List[Dict[str, str]]] = None
+    model: Optional[ModelLiteral] = None
 
 
 class EditRequest(BaseModel):
@@ -49,11 +49,11 @@ class EditRequest(BaseModel):
     subset of fields.
     """
 
-    display_name: Optional[str]
-    prompt: Optional[str]
-    variables: Optional[List[str]]
-    values: Optional[List[Dict[str, str]]]
-    model: Optional[ModelLiteral]
+    display_name: Optional[str] = None
+    prompt: Optional[str] = None
+    variables: Optional[List[str]] = None
+    values: Optional[List[Dict[str, str]]] = None
+    model: Optional[ModelLiteral] = None
 
 
 class DeployRequest(BaseModel):
@@ -68,8 +68,8 @@ class TemplateResponse(BaseModel):
     variables: List[str]
     values: List[Dict[str, str]]
     prompt: Dict[str, Any]
-    completion: Optional[str]
-    model: Optional[ModelLiteral]
+    completion: Optional[str] = None
+    model: Optional[ModelLiteral] = None
 
 
 class GenerationRequest(BaseModel):
@@ -302,6 +302,7 @@ async def edit_prompt(
 
     if edit_request.model is not None:
         db_template.model = edit_request.model
+
     await db.commit()
     return create_template_response(db_template)
 
@@ -417,7 +418,7 @@ async def prompt_generate(
     db_template.meta_json["completion"] = [completion]
     await db.commit()
 
-    # TODO(Matthew): Add model use to DBUserUsage?
+    # TODO(Matthew): Add model use to DBUserUsage in prompt_generate() and deployment_generate()
     return response
 
 
@@ -446,22 +447,6 @@ async def deployment_generate(
     )
 
     model = db_template.model or DEFAULT_MODEL
-    if model == "gpt-35-turbo-deployment":
-        await DBUserUsage.aio_upsert(
-            db,
-            user.id,
-            prompt_tokens_gpt_35=response.usage.prompt_tokens,
-            completion_tokens_gpt_35=response.usage.completion_tokens,
-        )
-    elif model == "gpt-4-deployment":
-        await DBUserUsage.aio_upsert(
-            db,
-            user.id,
-            prompt_tokens_gpt_4=response.usage.prompt_tokens,
-            completion_tokens_gpt_4=response.usage.completion_tokens,
-        )
-    else:
-        raise ValueError(f"Wrong model type: {model}")
     return response
 
 

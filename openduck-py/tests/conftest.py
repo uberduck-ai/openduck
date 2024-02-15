@@ -1,14 +1,17 @@
 import asyncio
 from datetime import datetime
 from typing import Generator
-from urllib.parse import quote_plus
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import configure_mappers, scoped_session, sessionmaker
+from propelauth_fastapi import User
+
 from openduck_py.db import connection_string, Base
 from openduck_py.models import DBUser, DBTemplatePrompt, DBTemplateDeployment
 from openduck_py.routers.templates import DEFAULT_MODEL
+from openduck_py.routers.main import app
+from openduck_py.auth.auth import propel_auth
 
 engine = create_engine(connection_string)
 Session = scoped_session(sessionmaker(bind=engine))
@@ -49,17 +52,49 @@ def db_session():
     Base.metadata.drop_all(bind=engine)
 
 
+@pytest.fixture(autouse=True)
+def override_dependencies():
+    def _dep():
+        return User("test-propel-auth-id", None, "test@test.com")
+
+    app.dependency_overrides[propel_auth.optional_user] = _dep
+
+
 @pytest.fixture
 def user_1(db_session):
     """Create a user."""
     user = DBUser(
         username="test-user",
+        propel_auth_id="test-propel-auth-id",
         email="test@test.com",
         stripe_customer_id="test_stripe_customer_id",
     )
     db_session.add(user)
     db_session.commit()
     return user
+
+
+@pytest.fixture
+def user_token(user_1):
+    return "asdf"
+
+
+@pytest.fixture
+def user_2(db_session):
+    """Create a user."""
+    user = DBUser(
+        username="test-user-2",
+        propel_auth_id="test-propel-auth-id2",
+        email="test2@test2.com",
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def user_2_token(user_2):
+    return "asdf2"
 
 
 @pytest.fixture

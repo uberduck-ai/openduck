@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer, Index
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import relationship
 from openduck_py.db import Base
@@ -18,10 +19,10 @@ class DBTemplateDeployment(Base):
     url_name = Column(String, nullable=False, index=True)
     # human readable name like "Test Table"
     display_name = Column(String)
-    prompt = Column(JSON)
+    prompt = Column(MutableDict.as_mutable(JSON))
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     deleted_at = Column(DateTime, default=None)
-    meta_json = Column(JSON)
+    meta_json = Column(MutableDict.as_mutable(JSON))
     model = Column(String)
 
     __table_args__ = (
