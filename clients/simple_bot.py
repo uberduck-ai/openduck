@@ -11,7 +11,7 @@ Instructions:
     0. Set UBERDUCK_API and OPENAI_ORGANIZATION_ID environment variables 
     1. Press the space bar to start recording
     2. Press the space bar again to stop recording
-    3. The recording will be processed and played back
+    3. A response will be generated and played
     4. Wait for the response to finish playing before starting a new recording
     5. Press the space bar to start a new recording
 """
