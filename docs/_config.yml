@@ -24,7 +24,7 @@ description: >- # this means to ignore newlines until "baseurl:"
   Building an open-source, moddable interactive AI plush toy. Our kids should
   grow up in a household full of hackable droids they can play with, work on,
   and learn from.
-baseurl: "" # the subpath of your site, e.g. /blog
+baseurl: "/openduck" # the subpath of your site, e.g. /blog
 url: "" # the base hostname & protocol for your site, e.g. http://example.com
 twitter_username: __UBERDUCK__
 github_username: uberduck-ai
