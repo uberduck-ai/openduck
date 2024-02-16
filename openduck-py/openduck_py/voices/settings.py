@@ -3,7 +3,7 @@ import torch
 
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
-DEVICE = "cpu"
+DEVICE = "gpu" if torch.cuda.is_available() else "cpu"
 SAMPLE_RATE = 24000
 MODEL_BUCKET = "uberduck-models-us-west-2"
 ESPEAK_LANGUAGES = {

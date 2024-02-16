@@ -1,15 +1,22 @@
+import io
+from tempfile import NamedTemporaryFile
 from uuid import uuid4
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
-from tempfile import NamedTemporaryFile
+from starlette.responses import StreamingResponse
+import whisper
+import base64
+from scipy.io.wavfile import read, write
+import numpy as np
+
 from openduck_py.utils.third_party_tts import aio_polly_tts
 from openduck_py.utils.s3 import download_file
 from openduck_py.models import DBVoice, DBUser
 from openduck_py.db import get_db_async, AsyncSession
-import whisper
 from openduck_py.voices import styletts2
 from pydantic import BaseModel
 from openduck_py.routers.templates import generate
+
 
 voice_router = APIRouter(prefix="/voice")
 
@@ -67,24 +74,23 @@ class ResponseRequest(BaseModel):
 
 
 @audio_router.post("/response", include_in_schema=False)
-async def audio_response(request: ResponseRequest):
+async def audio_response(request: ResponseRequest, response_class=StreamingResponse):
     print(request.bucket, request.object)
     with NamedTemporaryFile() as temp_file:
         download_file(request.object, request.bucket, path=temp_file.name)
         transcription = model.transcribe(temp_file.name)["text"]
 
-    prompt = {"messages": [{"role": "user", "content": transcription}]}
+    prompt = {
+        "messages": [
+            {"role": "user", "content": transcription + " Why is the sky blue?"}
+        ]
+    }
     response = await generate(prompt, [], "gpt-35-turbo-deployment")
     response_text = response.choices[0].message.content
-    styletts2.styletts2_inference(
+    audio = styletts2.styletts2_inference(
         text=response_text,
-        model_path="styletts2/rap_v1.pt",
-        model_bucket="uberduck-models-us-west-2",
-        config_path="styletts2/rap_v1_config.yml",
-        config_bucket="uberduck-models-us-west-2",
-        output_bucket="uberduck-audio-outputs",
-        output_path="response.wav",
-        style_prompt_path="511f17d1-8a30-4be8-86aa-4cdd8b0aed70.wav",
-        style_prompt_bucket="uberduck-audio-files",
     )
-    return dict(bucket="uberduck-audio-outputs", object="response.wav")
+    print(audio.shape, audio.dtype)
+    audio = np.int16(audio * 32767)  # Scale to 16-bit integer values
+    output = StreamingResponse(io.BytesIO(audio), media_type="application/octet-stream")
+    return output

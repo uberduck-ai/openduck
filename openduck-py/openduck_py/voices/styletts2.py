@@ -268,20 +268,58 @@ def resize_array(input_array, new_size):
         return input_array
 
 
+config_path = "styletts2/rap_v1_config.yml"
+config_bucket = "uberduck-models-us-west-2"
+model_params = load_object_from_s3(
+    s3_key=config_path, s3_bucket=config_bucket, loader=load_config
+)["model_params"]
+cache = pylru.lrucache(1)
+asr_config = load_object_from_s3(
+    s3_key="styletts2/asr/config.yml", s3_bucket=MODEL_BUCKET, loader=load_config
+)
+text_aligner = load_object_from_s3(
+    s3_key="styletts2/asr/epoch_00080.pth",
+    s3_bucket=MODEL_BUCKET,
+    loader=lambda path: load_asr_models(path, asr_config),
+)
+pitch_extractor = load_object_from_s3(
+    s3_key="styletts2/jdc/bst.t7", s3_bucket=MODEL_BUCKET, loader=load_f0_models
+)
+plbert_config = load_object_from_s3(
+    s3_key="styletts2/plbert/config.yml", s3_bucket=MODEL_BUCKET, loader=load_config
+)
+plbert = load_object_from_s3(
+    s3_key="styletts2/plbert/step_1000000.t7",
+    s3_bucket=MODEL_BUCKET,
+    loader=lambda x: load_plbert(plbert_config, x),
+)
+
+model_path = "styletts2/rap_v1.pt"
+model_bucket = "uberduck-models-us-west-2"
+model, sampler = load_model(
+    cache=cache,
+    model_bucket=model_bucket,
+    model_path=model_path,
+    text_aligner=text_aligner,
+    pitch_extractor=pitch_extractor,
+    plbert=plbert,
+    model_params=model_params,
+)
+
+style_prompt_path = "511f17d1-8a30-4be8-86aa-4cdd8b0aed70.wav"
+style_prompt_bucket = "uberduck-audio-files"
+
+ref_s = load_object_from_s3(
+    s3_key=style_prompt_path,
+    s3_bucket=style_prompt_bucket,
+    loader=lambda x: _compute_style(model, x),
+)
+
+
 def styletts2_inference(
     text: str,
-    model_path: str,
-    model_bucket: str,
-    config_path: str,
-    config_bucket: str,
-    output_bucket: str,
-    output_path: str,
-    style_prompt_path: str,
-    style_prompt_bucket: str,
-    # bps: float = 90.0,
-    # nlines: int = 1,
     language: str = "english",
-) -> str:
+):
     print("styletts2.run started")
 
     # NOTE (Sam): to deal with short inference issue https://github.com/yl4579/StyleTTS2/issues/46.
@@ -294,63 +332,13 @@ def styletts2_inference(
     else:
         warm_start_index = 0
 
-    model_params = load_object_from_s3(
-        s3_key=config_path, s3_bucket=config_bucket, loader=load_config
-    )["model_params"]
-    cache = pylru.lrucache(1)
-    asr_config = load_object_from_s3(
-        s3_key="styletts2/asr/config.yml", s3_bucket=MODEL_BUCKET, loader=load_config
-    )
-    text_aligner = load_object_from_s3(
-        s3_key="styletts2/asr/epoch_00080.pth",
-        s3_bucket=MODEL_BUCKET,
-        loader=lambda path: load_asr_models(path, asr_config),
-    )
-    pitch_extractor = load_object_from_s3(
-        s3_key="styletts2/jdc/bst.t7", s3_bucket=MODEL_BUCKET, loader=load_f0_models
-    )
-    plbert_config = load_object_from_s3(
-        s3_key="styletts2/plbert/config.yml", s3_bucket=MODEL_BUCKET, loader=load_config
-    )
-    plbert = load_object_from_s3(
-        s3_key="styletts2/plbert/step_1000000.t7",
-        s3_bucket=MODEL_BUCKET,
-        loader=lambda x: load_plbert(plbert_config, x),
-    )
-
-    model, sampler = load_model(
-        cache=cache,
-        model_bucket=model_bucket,
-        model_path=model_path,
-        text_aligner=text_aligner,
-        pitch_extractor=pitch_extractor,
-        plbert=plbert,
-        model_params=model_params,
-    )
     phonemizers = pylru.lrucache(5)
     phonemes = _phonemize(text, phonemizers, language)
-    ref_s = load_object_from_s3(
-        s3_key=style_prompt_path,
-        s3_bucket=style_prompt_bucket,
-        loader=lambda x: _compute_style(model, x),
-    )
     audio_array = inference(
         phonemes,
         model,
         sampler,
         ref_s,
-        # bps=bps,
-        # nlines=nlines,
         warm_start_index=warm_start_index,
     )
-    # target_samples = int(SAMPLE_RATE * nlines * 4 / bps)
-    # audio_array = resize_array(audio_array, target_samples)
-    with tempfile.NamedTemporaryFile(suffix=".wav") as f:
-        filepath = f.name
-        write_wav(filepath, SAMPLE_RATE, audio_array)
-        print(f"Uploading {filepath} to s3://{output_bucket}/{output_path}")
-        upload_file(output_path, output_bucket, path=filepath)
-        s3_url = f"https://{output_bucket}.s3.us-west-2.amazonaws.com/{output_path}"
-        print(f'Wrote audio for "{text}" to {s3_url}')
-
-    return dict(s3_url=s3_url)
+    return audio_array
