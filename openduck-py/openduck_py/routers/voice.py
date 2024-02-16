@@ -2,8 +2,9 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from openduck_py.utils.third_party_tts import aio_polly_tts
-from openduck_py.models import DBVoice
+from openduck_py.models import DBVoice, DBUser
 from openduck_py.db import get_db_async, AsyncSession
+import whisper
 
 voice_router = APIRouter(prefix="/voice")
 

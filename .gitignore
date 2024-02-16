@@ -160,3 +160,5 @@ cython_debug/
 #.idea/
 
 openduck-py/test.db
+.env.dev
+
