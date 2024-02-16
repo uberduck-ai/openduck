@@ -8,6 +8,7 @@ from einops import rearrange, reduce
 from torch import Tensor
 
 from .utils import *
+from openduck_py.voices.settings import DEVICE
 
 """
 Diffusion Training
@@ -27,14 +28,14 @@ class LogNormalDistribution(Distribution):
         self.std = std
 
     def __call__(
-        self, num_samples: int, device: torch.device = torch.device("cpu")
+        self, num_samples: int, device: torch.device = torch.device(DEVICE)
     ) -> Tensor:
         normal = self.mean + self.std * torch.randn((num_samples,), device=device)
         return normal.exp()
 
 
 class UniformDistribution(Distribution):
-    def __call__(self, num_samples: int, device: torch.device = torch.device("cpu")):
+    def __call__(self, num_samples: int, device: torch.device = torch.device(DEVICE)):
         return torch.rand(num_samples, device=device)
 
 
@@ -50,7 +51,7 @@ class VKDistribution(Distribution):
         self.sigma_data = sigma_data
 
     def __call__(
-        self, num_samples: int, device: torch.device = torch.device("cpu")
+        self, num_samples: int, device: torch.device = torch.device(DEVICE)
     ) -> Tensor:
         sigma_data = self.sigma_data
         min_cdf = atan(self.min_value / sigma_data) * 2 / pi

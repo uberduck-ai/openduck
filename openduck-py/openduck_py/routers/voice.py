@@ -1,7 +1,7 @@
 import io
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy import select
 from starlette.responses import StreamingResponse
 import whisper
@@ -68,15 +68,11 @@ model = whisper.load_model("base")
 audio_router = APIRouter(prefix="/audio")
 
 
-class ResponseRequest(BaseModel):
-    bucket: str
-    object: str
-
-
 @audio_router.post("/response", include_in_schema=False)
-async def audio_response(request: ResponseRequest, response_class=StreamingResponse):
+async def audio_response(audio: UploadFile = File(None), response_class=StreamingResponse):
     with NamedTemporaryFile() as temp_file:
-        download_file(request.object, request.bucket, path=temp_file.name)
+        data = await audio.read()
+        temp_file.write(data)
         transcription = model.transcribe(temp_file.name)["text"]
 
     prompt = {
@@ -85,7 +81,7 @@ async def audio_response(request: ResponseRequest, response_class=StreamingRespo
                 "role": "system",
                 "content": "You are a children's toy which can answer educational questions. You want to help your user and support them.",
             },
-            {"role": "user", "content": "Why does rain fall from the sky?"},
+            {"role": "user", "content": transcription}
         ]
     }
     response = await generate(prompt, [], "gpt-35-turbo-deployment")

@@ -24,6 +24,7 @@ numpy
 openai
 phonemizer
 pylru
+python-multipart
 requests
 setuptools
 scipy

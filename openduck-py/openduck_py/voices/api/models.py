@@ -22,6 +22,9 @@ from .modules.discriminators import (
 from munch import Munch
 import yaml
 
+from openduck_py.voices.settings import DEVICE
+
+
 
 class LearnedDownSample(nn.Module):
     def __init__(self, layer_type, dim_in):
@@ -716,7 +719,7 @@ def load_f0_models(path):
     # load F0 model
 
     F0_model = JDCNet(num_class=1, seq_len=192)
-    params = torch.load(path, map_location="cpu")["net"]
+    params = torch.load(path, map_location=DEVICE)["net"]
     F0_model.load_state_dict(params)
     _ = F0_model.train()
 
@@ -727,7 +730,7 @@ def load_asr_models(asr_model_path, asr_model_config):
     # load ASR model
     def _load_model(model_config, model_path):
         model = ASRCNN(**model_config)
-        params = torch.load(model_path, map_location="cpu")["model"]
+        params = torch.load(model_path, map_location=DEVICE)["model"]
         model.load_state_dict(params)
         return model
 
@@ -850,7 +853,7 @@ def build_model(args, text_aligner, pitch_extractor, bert):
 
 
 def load_checkpoint(model, optimizer, path, load_only_params=True, ignore_modules=[]):
-    state = torch.load(path, map_location="cpu")
+    state = torch.load(path, map_location=DEVICE)
     params = state["net"]
     for key in model:
         if key in params and key not in ignore_modules:

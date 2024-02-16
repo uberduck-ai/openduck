@@ -10,6 +10,9 @@ import random
 import numpy as np
 from scipy.signal import get_window
 
+from openduck_py.voices.settings import DEVICE
+
+
 LRELU_SLOPE = 0.1
 
 
@@ -685,7 +688,7 @@ class Decoder(nn.Module):
                 F0_curve = (
                     nn.functional.conv1d(
                         F0_curve.unsqueeze(1),
-                        torch.ones(1, 1, F0_down).to("cpu"),
+                        torch.ones(1, 1, F0_down).to(DEVICE),
                         padding=F0_down // 2,
                     ).squeeze(1)
                     / F0_down
@@ -694,7 +697,7 @@ class Decoder(nn.Module):
                 N = (
                     nn.functional.conv1d(
                         N.unsqueeze(1),
-                        torch.ones(1, 1, N_down).to("cpu"),
+                        torch.ones(1, 1, N_down).to(DEVICE),
                         padding=N_down // 2,
                     ).squeeze(1)
                     / N_down
