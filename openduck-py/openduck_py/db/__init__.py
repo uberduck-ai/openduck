@@ -48,10 +48,6 @@ configure_mappers()
 echo = True
 engine = create_engine(connection_string, echo=echo)
 Session = sessionmaker(bind=engine)
-# kwargs = {
-#     "pool_size": 100,
-#     "max_overflow": 200,
-# }
 async_engine = create_async_engine(async_connection_string, echo=echo)
 SessionAsync = sessionmaker(
     bind=async_engine,

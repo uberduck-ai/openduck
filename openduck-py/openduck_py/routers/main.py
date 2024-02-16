@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from openduck_py.routers.voice import voice_router
+from openduck_py.routers.templates import templates_router
+from openduck_py.routers.voice import audio_router
 
 # TODO (Matthew): Change
 openapi_url = None
@@ -16,6 +18,9 @@ app = FastAPI(
 )
 
 app.include_router(voice_router)
+app.include_router(templates_router)
+app.include_router(audio_router)
+
 
 @app.get("/status")
 def status():
