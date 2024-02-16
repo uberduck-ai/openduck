@@ -75,22 +75,26 @@ class ResponseRequest(BaseModel):
 
 @audio_router.post("/response", include_in_schema=False)
 async def audio_response(request: ResponseRequest, response_class=StreamingResponse):
-    print(request.bucket, request.object)
     with NamedTemporaryFile() as temp_file:
         download_file(request.object, request.bucket, path=temp_file.name)
         transcription = model.transcribe(temp_file.name)["text"]
 
     prompt = {
         "messages": [
-            {"role": "user", "content": transcription + " Why is the sky blue?"}
+            {
+                "role": "system",
+                "content": "You are a children's toy which can answer educational questions. You want to help your user and support them.",
+            },
+            {"role": "user", "content": "Why does rain fall from the sky?"},
         ]
     }
     response = await generate(prompt, [], "gpt-35-turbo-deployment")
-    response_text = response.choices[0].message.content
+    response_text = response.choices[0].message.content[:400]
+    print(response_text)
+    # TODO: Process styletts2 in chunks of text, and return one chunk at a time in a streaming fashion
     audio = styletts2.styletts2_inference(
         text=response_text,
     )
-    print(audio.shape, audio.dtype)
     audio = np.int16(audio * 32767)  # Scale to 16-bit integer values
     output = StreamingResponse(io.BytesIO(audio), media_type="application/octet-stream")
     return output
