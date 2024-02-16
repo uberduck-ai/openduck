@@ -413,7 +413,7 @@ async def prompt_generate(
         db_template.prompt, generation_request.variables, db_template.model
     )
 
-    # Set the DBPromptTemplate's completion field to the LLM's completion string
+    # Set the DBTemplatePrompt's completion field to the LLM's completion string
     completion = response.choices[0].message.content
     db_template.meta_json["completion"] = [completion]
     await db.commit()
