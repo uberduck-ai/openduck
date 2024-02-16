@@ -79,7 +79,7 @@ async def audio_response(audio: UploadFile = File(None), response_class=Streamin
         "messages": [
             {
                 "role": "system",
-                "content": "You are a children's toy which can answer educational questions. You want to help your user and support them.",
+                "content": "You are a children's toy which can answer educational questions. You want to help your user and support them. Give short concise responses no more than 2 sentences.",
             },
             {"role": "user", "content": transcription}
         ]
