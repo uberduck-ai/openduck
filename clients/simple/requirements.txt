@@ -1,0 +1,8 @@
+numpy
+openai
+pydub
+pynput
+requests
+sounddevice
+soundfile
+sshkeyboard

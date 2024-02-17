@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
-from pynput import keyboard
+from sshkeyboard import listen_keyboard
 import soundfile as sf
 from openai import OpenAI
 from pydub import AudioSegment
@@ -41,9 +41,6 @@ RECORDING_FILE = "recording.wav"
 RESPONSE_FILE = "response.wav"
 UBERDUCK_API = os.environ["UBERDUCK_API"]
 
-client = OpenAI(
-    organization=os.environ["OPENAI_ORGANIZATION_ID"],
-)
 speech_file_path = Path(__file__).parent / "response.wav"
 chat_history = [
     {
@@ -60,6 +57,10 @@ parser.add_argument(
 )
 args = parser.parse_args()
 USE_UBERDUCK = not args.openai
+if not USE_UBERDUCK:
+    client = OpenAI(
+        organization=os.environ["OPENAI_ORGANIZATION_ID"],
+    )
 
 
 def uberduck_response():
@@ -161,7 +162,6 @@ class AudioRecorder:
 class StateMachine:
     def __init__(self):
         self.recorder = AudioRecorder()
-        self.listener = keyboard.Listener(on_press=self.on_press)
         self.state = IDLE
 
     def set_state(self, state):
@@ -171,7 +171,8 @@ class StateMachine:
         return f"State: {self.state}"
 
     def on_press(self, key):
-        if key == keyboard.Key.space:
+        print("key: ", key)
+        if key == "space":
             if self.state == IDLE:
                 self.set_state(RECORDING)
                 self.recorder.start_recording()
@@ -185,8 +186,7 @@ class StateMachine:
                 self.set_state(IDLE)
 
     def run(self):
-        with self.listener:
-            self.listener.join()
+        listen_keyboard(on_press=self.on_press)
 
 
 if __name__ == "__main__":
