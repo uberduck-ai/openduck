@@ -7,6 +7,8 @@ from sqlalchemy import select
 from starlette.responses import StreamingResponse
 import whisper
 import base64
+from time import time
+
 from scipy.io.wavfile import read, write
 import numpy as np
 
@@ -62,7 +64,7 @@ async def text_to_speech(
     )
 
 
-model = whisper.load_model("base")
+model = whisper.load_model("tiny")  # Fastest possible whisper model
 
 audio_router = APIRouter(prefix="/audio")
 
@@ -74,10 +76,15 @@ async def audio_response(
     db: AsyncSession = Depends(get_db_async),
     response_class=StreamingResponse,
 ):
+
+    t0 = time()
+
     with NamedTemporaryFile() as temp_file:
         data = await audio.read()
         temp_file.write(data)
         transcription = model.transcribe(temp_file.name)["text"]
+
+    t_whisper = time()
 
     system_prompt = {
         "role": "system",
@@ -100,6 +107,8 @@ async def audio_response(
     messages.append(new_message)
     response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
 
+    t_gpt = time()
+
     response_message = response.choices[0].message
 
     messages.append(
@@ -116,5 +125,12 @@ async def audio_response(
         audio_chunks.append(audio_chunk)
     audio = np.concatenate(audio_chunks)
     audio = np.int16(audio * 32767)  # Scale to 16-bit integer values
+
+    t_styletts = time()
+
+    print("Whisper", t_whisper - t0)
+    print("GPT", t_gpt - t_whisper)
+    print("StyleTTS2", t_styletts - t_gpt)
+
     output = StreamingResponse(io.BytesIO(audio), media_type="application/octet-stream")
     return output
