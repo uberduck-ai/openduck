@@ -29,6 +29,7 @@ from sshkeyboard import listen_keyboard
 import soundfile as sf
 from openai import OpenAI
 from pydub import AudioSegment
+from uuid import uuid4
 
 SAMPLE_RATE = 22050
 CHANNELS = 1
@@ -62,12 +63,15 @@ if not USE_UBERDUCK:
         organization=os.environ["OPENAI_ORGANIZATION_ID"],
     )
 
+session = str(uuid4())
+
 
 def uberduck_response():
     with open(RECORDING_FILE, "rb") as file:
         print(f"[INFO] Sending audio to the server...")
         files = {"audio": (RECORDING_FILE, file, "audio/wav")}
-        response = requests.post(UBERDUCK_API, files=files)
+        payload = {"session_id": session}
+        response = requests.post(UBERDUCK_API, files=files, data=payload)
         print(f"[INFO] Response received from the server: {response.status_code}")
     if response.status_code == 200:
         data = np.frombuffer(response.content, dtype=np.int16)

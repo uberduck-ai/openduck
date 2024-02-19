@@ -1,7 +1,7 @@
 import io
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy import select
 from starlette.responses import StreamingResponse
 import whisper
@@ -11,7 +11,7 @@ import numpy as np
 
 from openduck_py.utils.third_party_tts import aio_polly_tts
 from openduck_py.utils.s3 import download_file
-from openduck_py.models import DBVoice, DBUser
+from openduck_py.models import DBVoice, DBUser, DBChatHistory
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.voices import styletts2
 from pydantic import BaseModel
@@ -44,8 +44,6 @@ async def text_to_speech(
     voice = await db.execute(
         select(DBVoice).where(DBVoice.voice_uuid == voice_uuid).limit(1)
     )
-    print(voice)
-
     request_id = str(uuid4())
     upload_path = f"{request_id}/output.mp3"
     text = "Il était une fois, dans un petit village pittoresque en France, deux âmes solitaires dont les chemins étaient destinés à se croiser. Juliette, une jeune fleuriste passionnée par les couleurs et les parfums de ses fleurs, passait ses journées à embellir la vie des villageois avec ses bouquets enchanteurs. De l'autre côté du village vivait Étienne, un poète timide dont les vers capturaient la beauté et la mélancolie de la vie, mais qui gardait ses poèmes pour lui, craignant qu'ils ne soient pas à la hauteur du monde extérieur."
@@ -69,27 +67,50 @@ audio_router = APIRouter(prefix="/audio")
 
 
 @audio_router.post("/response", include_in_schema=False)
-async def audio_response(audio: UploadFile = File(None), response_class=StreamingResponse):
+async def audio_response(
+    session_id: str = Form(None),
+    audio: UploadFile = File(None),
+    db: AsyncSession = Depends(get_db_async),
+    response_class=StreamingResponse,
+):
     with NamedTemporaryFile() as temp_file:
         data = await audio.read()
         temp_file.write(data)
         transcription = model.transcribe(temp_file.name)["text"]
 
-    prompt = {
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a children's toy which can answer educational questions. You want to help your user and support them. Give short concise responses no more than 2 sentences.",
-            },
-            {"role": "user", "content": transcription}
-        ]
+    system_prompt = {
+        "role": "system",
+        "content": "You are a children's toy which can answer educational questions. You want to help your user and support them. Give short concise responses no more than 2 sentences.",
     }
-    response = await generate(prompt, [], "gpt-35-turbo-deployment")
-    response_text = response.choices[0].message.content[:400]
-    print(response_text)
+    new_message = {"role": "user", "content": transcription}
+
+    chat = (
+        await db.execute(
+            select(DBChatHistory).where(DBChatHistory.session_id == session_id)
+        )
+    ).scalar_one_or_none()
+    if chat is None:
+        chat = DBChatHistory(
+            session_id=session_id, history_json={"messages": [system_prompt]}
+        )
+        db.add(chat)
+
+    messages = chat.history_json["messages"]
+    messages.append(new_message)
+    response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
+
+    response_message = response.choices[0].message
+
+    messages.append(
+        {"role": response_message.role, "content": response_message.content}
+    )
+    chat.history_json["messages"] = messages
+    await db.commit()
+
     # TODO: Process styletts2 in chunks of text, and return one chunk at a time in a streaming fashion
     audio = styletts2.styletts2_inference(
-        text=response_text,
+        # TODO: better way to deal with long responses. chunk them
+        text=response_message.content[:500],
     )
     audio = np.int16(audio * 32767)  # Scale to 16-bit integer values
     output = StreamingResponse(io.BytesIO(audio), media_type="application/octet-stream")

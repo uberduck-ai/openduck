@@ -1,5 +1,6 @@
 from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, Integer, Text
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import relationship
 from openduck_py.db import Base
 
