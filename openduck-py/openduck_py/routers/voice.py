@@ -1,4 +1,5 @@
 import io
+import re
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
 from fastapi import APIRouter, Depends, UploadFile, File, Form
@@ -107,11 +108,13 @@ async def audio_response(
     chat.history_json["messages"] = messages
     await db.commit()
 
-    # TODO: Process styletts2 in chunks of text, and return one chunk at a time in a streaming fashion
-    audio = styletts2.styletts2_inference(
-        # TODO: better way to deal with long responses. chunk them
-        text=response_message.content[:500],
-    )
+    audio_chunks = []
+    sentences = re.split(r"(?<=[.!?]) +", response_message.content)
+    for i in range(0, len(sentences), 2):
+        chunk_text = " ".join(sentences[i : i + 2])
+        audio_chunk = styletts2.styletts2_inference(text=chunk_text)
+        audio_chunks.append(audio_chunk)
+    audio = np.concatenate(audio_chunks)
     audio = np.int16(audio * 32767)  # Scale to 16-bit integer values
     output = StreamingResponse(io.BytesIO(audio), media_type="application/octet-stream")
     return output

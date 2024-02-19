@@ -294,7 +294,7 @@ plbert = load_object_from_s3(
     loader=lambda x: load_plbert(plbert_config, x),
 )
 
-model_path = "styletts2/rap_v1.pt"
+model_path = "styletts2/prototype_voice.pth"
 model_bucket = "uberduck-models-us-west-2"
 model, sampler = load_model(
     cache=cache,
@@ -306,7 +306,7 @@ model, sampler = load_model(
     model_params=model_params,
 )
 
-style_prompt_path = "511f17d1-8a30-4be8-86aa-4cdd8b0aed70.wav"
+style_prompt_path = "bertie-chipper.wav"
 style_prompt_bucket = "uberduck-audio-files"
 
 ref_s = load_object_from_s3(
@@ -316,10 +316,7 @@ ref_s = load_object_from_s3(
 )
 
 
-def styletts2_inference(
-    text: str,
-    language: str = "english",
-):
+def styletts2_inference(text: str, language: str = "english"):
     print("styletts2.run started")
 
     # NOTE (Sam): to deal with short inference issue https://github.com/yl4579/StyleTTS2/issues/46.
