@@ -67,15 +67,14 @@ if not USE_UBERDUCK:
 
 session = str(uuid4())
 
-
 async def uberduck_websocket():
-    uri = "ws://" + UBERDUCK_API_HOST + "?session_id=asdf"  # TODO: Change to wss:// for prod
-    START HERE: send the session_id as well. Then go to figure out turns - use Voice Activity Detection. 
+    uri = f"ws://{UBERDUCK_API_HOST}?session_id={session}"
+    print(uri)
     async with websockets.connect(uri) as websocket:
         print(f"[INFO] Sending audio to the server...")
         with open(RECORDING_FILE, "rb") as file:
             audio_content = file.read()
-            await websocket.send(audio_content, data={"session_id", session})
+            await websocket.send(audio_content)
             print("[INFO] Audio sent to the server.")
 
         async for message in websocket:
@@ -83,7 +82,6 @@ async def uberduck_websocket():
             sd.play(data, 24000)
             sd.wait()
             print("[INFO] Playing received audio.")
-
 
 def uberduck_response():
     uri = "http://" + UBERDUCK_API_HOST
@@ -205,8 +203,6 @@ class StateMachine:
                 self.recorder.stop_recording()
                 self.set_state(PROCESSING)
                 await self.recorder.start_processing()
-                # self.set_state(PLAYBACK)
-                # self.recorder.play()
                 self.set_state(IDLE)
 
     def run(self):
@@ -214,6 +210,9 @@ class StateMachine:
 
 
 if __name__ == "__main__":
+    startup_sound, fs = sf.read("startup.wav")
+    sd.play(startup_sound, fs)
+    sd.wait()
     print("Press space to start recording.")
     sm = StateMachine()
     sm.run()
