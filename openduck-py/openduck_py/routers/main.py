@@ -1,5 +1,4 @@
-from fastapi import FastAPI
-from openduck_py.routers.voice import voice_router
+from fastapi import FastAPI, WebSocket
 from openduck_py.routers.templates import templates_router
 from openduck_py.routers.voice import audio_router
 
@@ -17,7 +16,6 @@ app = FastAPI(
     debug=IS_DEV,
 )
 
-app.include_router(voice_router)
 app.include_router(templates_router)
 app.include_router(audio_router)
 

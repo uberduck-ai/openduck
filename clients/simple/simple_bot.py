@@ -33,7 +33,7 @@ from openai import OpenAI
 from pydub import AudioSegment
 from uuid import uuid4
 
-SAMPLE_RATE = 22050
+SAMPLE_RATE = 24000
 CHANNELS = 1
 
 IDLE = "IDLE"
@@ -67,6 +67,7 @@ if not USE_UBERDUCK:
 
 session = str(uuid4())
 
+
 async def uberduck_websocket():
     uri = f"ws://{UBERDUCK_API_HOST}?session_id={session}"
     print(uri)
@@ -82,6 +83,24 @@ async def uberduck_websocket():
             sd.play(data, 24000)
             sd.wait()
             print("[INFO] Playing received audio.")
+
+
+async def uberduck_websocket():
+    async with websockets.connect(UBERDUCK_API) as websocket:
+        print(f"[INFO] Sending audio to the server...")
+        with open(RECORDING_FILE, "rb") as file:
+            audio_content = file.read()
+            await websocket.send(audio_content)
+            print("[INFO] Audio sent to the server.")
+
+        async for message in websocket:
+            if message == "done":
+                break
+            data = np.frombuffer(message, dtype=np.int16)
+            sd.play(data, 24000)
+            await sd.wait()
+            print("[INFO] Playing received audio.")
+
 
 def uberduck_response():
     uri = "http://" + UBERDUCK_API_HOST
@@ -175,7 +194,7 @@ class AudioRecorder:
     async def start_processing(self):
         print("[INFO] Processing...")
         if USE_UBERDUCK:
-            await uberduck_websocket()
+            uberduck_websocket()
         else:
             openai_response()
         print("[INFO] Processing finished.")
