@@ -1,28 +1,29 @@
 ---
 layout: post
-title:  "We're building an open-source duck"
+title:  "We're building an open-source plush duck"
 date:   2024-02-15 13:47:19 -0800
 ---
-You’ll find this post in your `_posts` directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run `jekyll serve`, which launches a web server and auto-regenerates your site when a file is updated.
+Uberduck is building an open-source plush duck toy with an AI personality and a voice that you can talk to with your voice. We're going to build and manufacture the toy, open sourcing all the code and hardware information and documenting the manufacturing process. Then we're going to sell the toy on the internet.
 
-Jekyll requires blog post files to be named according to the following format:
+<img src="{{ site.baseurl }}/images/plush.png" width="300px"/>
 
-`YEAR-MONTH-DAY-title.MARKUP`
+The open-sourcing part will happen in [this repo](openduck-gh), which we're
+calling Openduck. The documenting part will happen on this blog and on our
+social media pages. The selling bit will happen on our website, either on [our
+homepage](uberduck-home) or at a subdomain that doesn't exist yet.
 
-Where `YEAR` is a four-digit number, `MONTH` and `DAY` are both two-digit numbers, and `MARKUP` is the file extension representing the format used in the file. After that, include the necessary front matter. Take a look at the source for this post to get an idea about how it works.
+We want you to buy our toy, but we also want you to mod it, hack it, tweak it, replace the voice and personality, and generally crank on anything your heart desires.
 
-Jekyll also offers powerful support for code snippets:
+I've been obsessed with talking to robots for the past 4 years. The progress in
+open-source AI during this period has been stunning, but the era of open,
+hackable, real-world AI hardware is [just](mobile-aloha)
+[beginning](umi-gripper). If we build the right stuff, in 15 years our kids could
+be tinkering on home-built C-3POs like your grandfather may have worked on an
+old Cadillac.
 
-{% highlight ruby %}
-def print_hi(name)
-  puts "Hi, #{name}"
-end
-print_hi('Tom')
-#=> prints 'Hi, Tom' to STDOUT.
-{% endhighlight %}
+Time to build the right stuff.
 
-Check out the [Jekyll docs][jekyll-docs] for more info on how to get the most out of Jekyll. File all bugs/feature requests at [Jekyll’s GitHub repo][jekyll-gh]. If you have questions, you can ask them on [Jekyll Talk][jekyll-talk].
-
-[jekyll-docs]: https://jekyllrb.com/docs/home
-[jekyll-gh]:   https://github.com/jekyll/jekyll
-[jekyll-talk]: https://talk.jekyllrb.com/
+[uberduck-home]:   https://www.uberduck.ai
+[openduck-gh]:   https://github.com/uberduck-ai/openduck
+[mobile-aloha]:  https://mobile-aloha.github.io/ 
+[umi-gripper]:   https://umi-gripper.github.io/
