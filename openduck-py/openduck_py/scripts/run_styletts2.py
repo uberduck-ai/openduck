@@ -1,14 +1,10 @@
+import soundfile as sf
 from openduck_py.voices import styletts2
+from openduck_py.voices.settings import SAMPLE_RATE
 
 
-styletts2.styletts2_inference(
-    text="Hello, my name is Matthew. How are you today?",
-    model_path="styletts2/rap_v1.pt",
-    model_bucket="uberduck-models-us-west-2",
-    config_path="styletts2/rap_v1_config.yml",
-    config_bucket="uberduck-models-us-west-2",
-    output_bucket="uberduck-audio-outputs",
-    output_path="test.wav",
-    style_prompt_path="511f17d1-8a30-4be8-86aa-4cdd8b0aed70.wav",
-    style_prompt_bucket="uberduck-audio-files",
+audio = styletts2.styletts2_inference(
+    text="Hey, I'm the Uberduck! What do you want to learn about today?"
 )
+
+sf.write("startup.wav", audio, SAMPLE_RATE)  # Assuming the sample rate is 22050 Hz

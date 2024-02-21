@@ -1,6 +1,7 @@
 alembic
 aiosqlite
 aioboto3
+asgiref
 asyncpg
 azure-cognitiveservices-speech
 databases

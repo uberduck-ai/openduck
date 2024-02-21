@@ -22,6 +22,8 @@ import requests
 import threading
 import queue
 from pathlib import Path
+import asyncio
+import websockets
 
 import numpy as np
 import sounddevice as sd
@@ -31,7 +33,7 @@ from openai import OpenAI
 from pydub import AudioSegment
 from uuid import uuid4
 
-SAMPLE_RATE = 22050
+SAMPLE_RATE = 24000
 CHANNELS = 1
 
 IDLE = "IDLE"
@@ -40,7 +42,7 @@ PROCESSING = "PROCESSING"
 PLAYBACK = "PLAYBACK"
 RECORDING_FILE = "recording.wav"
 RESPONSE_FILE = "response.wav"
-UBERDUCK_API = os.environ["UBERDUCK_API"]
+UBERDUCK_API_HOST = os.environ["UBERDUCK_API_HOST"]
 
 speech_file_path = Path(__file__).parent / "response.wav"
 chat_history = [
@@ -66,12 +68,47 @@ if not USE_UBERDUCK:
 session = str(uuid4())
 
 
+async def uberduck_websocket():
+    uri = f"ws://{UBERDUCK_API_HOST}?session_id={session}"
+    print(uri)
+    async with websockets.connect(uri) as websocket:
+        print(f"[INFO] Sending audio to the server...")
+        with open(RECORDING_FILE, "rb") as file:
+            audio_content = file.read()
+            await websocket.send(audio_content)
+            print("[INFO] Audio sent to the server.")
+
+        async for message in websocket:
+            data = np.frombuffer(message, dtype=np.int16)
+            sd.play(data, 24000)
+            sd.wait()
+            print("[INFO] Playing received audio.")
+
+
+async def uberduck_websocket():
+    async with websockets.connect(UBERDUCK_API) as websocket:
+        print(f"[INFO] Sending audio to the server...")
+        with open(RECORDING_FILE, "rb") as file:
+            audio_content = file.read()
+            await websocket.send(audio_content)
+            print("[INFO] Audio sent to the server.")
+
+        async for message in websocket:
+            if message == "done":
+                break
+            data = np.frombuffer(message, dtype=np.int16)
+            sd.play(data, 24000)
+            await sd.wait()
+            print("[INFO] Playing received audio.")
+
+
 def uberduck_response():
+    uri = "http://" + UBERDUCK_API_HOST
     with open(RECORDING_FILE, "rb") as file:
         print(f"[INFO] Sending audio to the server...")
         files = {"audio": (RECORDING_FILE, file, "audio/wav")}
         payload = {"session_id": session}
-        response = requests.post(UBERDUCK_API, files=files, data=payload)
+        response = requests.post(uri, files=files, data=payload)
         print(f"[INFO] Response received from the server: {response.status_code}")
     if response.status_code == 200:
         data = np.frombuffer(response.content, dtype=np.int16)
@@ -154,10 +191,10 @@ class AudioRecorder:
         sd.wait()
         print("[INFO] Playback finished. Press space to start recording.")
 
-    def start_processing(self):
+    async def start_processing(self):
         print("[INFO] Processing...")
         if USE_UBERDUCK:
-            uberduck_response()
+            uberduck_websocket()
         else:
             openai_response()
         print("[INFO] Processing finished.")
@@ -174,7 +211,7 @@ class StateMachine:
     def __str__(self) -> str:
         return f"State: {self.state}"
 
-    def on_press(self, key):
+    async def on_press(self, key):
         print("key: ", key)
         if key == "space":
             if self.state == IDLE:
@@ -184,9 +221,7 @@ class StateMachine:
             elif self.state == RECORDING:
                 self.recorder.stop_recording()
                 self.set_state(PROCESSING)
-                self.recorder.start_processing()
-                self.set_state(PLAYBACK)
-                self.recorder.play()
+                await self.recorder.start_processing()
                 self.set_state(IDLE)
 
     def run(self):
@@ -194,6 +229,9 @@ class StateMachine:
 
 
 if __name__ == "__main__":
+    startup_sound, fs = sf.read("startup.wav")
+    sd.play(startup_sound, fs)
+    sd.wait()
     print("Press space to start recording.")
     sm = StateMachine()
     sm.run()
