@@ -12,7 +12,7 @@ from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
-model = whisper.load_model("tiny")  # Fastest possible whisper model
+model = whisper.load_model("medium")  # Fastest possible whisper model
 
 audio_router = APIRouter(prefix="/audio")
 
@@ -92,5 +92,4 @@ async def audio_response(
     print("GPT", t_gpt - t_whisper)
     print("StyleTTS2", t_styletts - t_gpt)
 
-    # await websocket.send_text("done")
     await websocket.close()

@@ -67,9 +67,7 @@ def load_params(path):
     return params_whole["net"]
 
 
-def _load_model(
-    model_bucket, model_path, text_aligner, pitch_extractor, plbert, model_params
-):
+def load_model(model_path, text_aligner, pitch_extractor, plbert, model_params):
     # NOTE (Sam): building the model prior to loading makes using the "model_args" key to store the config not work.
     model = build_model(
         recursive_munch(model_params),
@@ -80,9 +78,12 @@ def _load_model(
 
     _ = [model[key].to(DEVICE) for key in model]
 
-    state_dict = load_object_from_s3(
-        s3_key=model_path, s3_bucket=model_bucket, loader=load_params
-    )
+    # state_dict = load_object_from_s3(
+    #     s3_key=model_path, s3_bucket=model_bucket, loader=load_params
+    # )
+
+    state_dict = load_params(model_path)
+
     for key in model:
         if key in state_dict:
             print("%s loaded" % key)
@@ -109,24 +110,6 @@ def _load_model(
         clamp=False,
     )
     return model, sampler
-
-
-# NOTE (Sam): this is a version of the loading code from celery-bark that caches models.
-def load_model(
-    cache, model_bucket, model_path, text_aligner, pitch_extractor, plbert, model_params
-):
-    key = model_path.replace("/", "_")
-    if key not in cache:
-        cache[key] = _load_model(
-            model_bucket,
-            model_path,
-            text_aligner,
-            pitch_extractor,
-            plbert,
-            model_params,
-        )
-
-    return cache[key]
 
 
 def load_phonemizer(language, cache):
@@ -274,32 +257,15 @@ model_params = load_object_from_s3(
     s3_key=config_path, s3_bucket=config_bucket, loader=load_config
 )["model_params"]
 cache = pylru.lrucache(1)
-asr_config = load_object_from_s3(
-    s3_key="styletts2/asr/config.yml", s3_bucket=MODEL_BUCKET, loader=load_config
-)
-text_aligner = load_object_from_s3(
-    s3_key="styletts2/asr/epoch_00080.pth",
-    s3_bucket=MODEL_BUCKET,
-    loader=lambda path: load_asr_models(path, asr_config),
-)
-pitch_extractor = load_object_from_s3(
-    s3_key="styletts2/jdc/bst.t7", s3_bucket=MODEL_BUCKET, loader=load_f0_models
-)
-plbert_config = load_object_from_s3(
-    s3_key="styletts2/plbert/config.yml", s3_bucket=MODEL_BUCKET, loader=load_config
-)
-plbert = load_object_from_s3(
-    s3_key="styletts2/plbert/step_1000000.t7",
-    s3_bucket=MODEL_BUCKET,
-    loader=lambda x: load_plbert(plbert_config, x),
-)
 
-model_path = "styletts2/prototype_voice.pth"
-model_bucket = "uberduck-models-us-west-2"
+asr_config = load_config("models/asr_config.yml")
+plbert_config = load_config("models/plbert_config.yml")
+
+text_aligner = load_asr_models("models/text_aligner.pth", asr_config)
+pitch_extractor = load_f0_models("models/pitch_extractor.t7")
+plbert = load_plbert(plbert_config, "models/plbert.t7")
 model, sampler = load_model(
-    cache=cache,
-    model_bucket=model_bucket,
-    model_path=model_path,
+    model_path="models/prototype_voice.pth",
     text_aligner=text_aligner,
     pitch_extractor=pitch_extractor,
     plbert=plbert,
