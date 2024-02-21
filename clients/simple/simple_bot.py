@@ -139,28 +139,23 @@ class AudioRecorder:
         self.recording = False
         self.duration = 10  # Maximum recording duration in seconds
         self.audio_queue = queue.Queue()
+        self.stream = None
 
     def start_recording(self):
         self.recording = True
         self.audio_data = []
         print("[INFO] Recording started...")
-        # threading.Thread(target=self.record, daemon=True).start()
-        self.record()
-
-    def stop_recording(self):
-        self.recording = False
-        print("[INFO] Recording stopped.")
-        self.save_recording()
-
-    def record(self):
-        with sd.InputStream(
+        self.stream = sd.InputStream(
             callback=self.audio_callback,
             samplerate=SAMPLE_RATE,
             channels=CHANNELS,
             blocksize=SAMPLE_RATE,  # 1 block = 1 second (SAMPLE_RATE frames)
-        ):
-            while self.recording:
-                sd.sleep(100)
+        )
+        self.stream.start()  # Manually start the stream
+        while self.recording:
+            sd.sleep(100)
+        self.stream.stop()  # Manually stop the stream when done recording
+        print("[INFO] Recording stopped.")
 
     def audio_callback(self, indata, frames, time, status):
         audio_chunk = indata.copy()
@@ -169,7 +164,9 @@ class AudioRecorder:
 
         print("Norm:", np.linalg.norm(audio_chunk))
         if np.linalg.norm(audio_chunk) < SILENCE_THRESHOLD:
-            self.stop_recording()
+            print("[INFO] Recording stopped.")
+            self.recording = False
+            self.save_recording()
 
     def save_recording(self):
         while not self.audio_queue.empty():
@@ -209,27 +206,6 @@ class AudioRecorder:
         print("[INFO] Processing finished.")
 
 
-class StateMachine:
-    def __init__(self):
-        self.recorder = AudioRecorder()
-        self.state = IDLE
-
-    def set_state(self, state):
-        self.state = state
-
-    def __str__(self) -> str:
-        return f"State: {self.state}"
-
-    async def on_press(self, key):
-        print("key: ", key)
-        if key == "space":
-            self.set_state(RECORDING)
-            self.recorder.start_recording()
-
-    def run(self):
-        listen_keyboard(on_press=self.on_press)
-
-
 def play_startup_sound():
     startup_sound, fs = sf.read("startup.wav")
     sd.play(startup_sound, fs)
@@ -237,6 +213,7 @@ def play_startup_sound():
 
 
 if __name__ == "__main__":
-    print("Press space to start recording.")
-    sm = StateMachine()
-    sm.run()
+    play_startup_sound()
+    recorder = AudioRecorder()
+    while True:
+        recorder.start_recording()
