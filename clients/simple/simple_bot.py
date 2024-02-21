@@ -32,6 +32,7 @@ import soundfile as sf
 from openai import OpenAI
 from pydub import AudioSegment
 from uuid import uuid4
+from asgiref.sync import async_to_sync
 
 SAMPLE_RATE = 24000
 CHANNELS = 1
@@ -43,6 +44,8 @@ PLAYBACK = "PLAYBACK"
 RECORDING_FILE = "recording.wav"
 RESPONSE_FILE = "response.wav"
 UBERDUCK_API_HOST = os.environ["UBERDUCK_API_HOST"]
+
+SILENCE_THRESHOLD = 1.0
 
 speech_file_path = Path(__file__).parent / "response.wav"
 chat_history = [
@@ -82,23 +85,6 @@ async def uberduck_websocket():
             data = np.frombuffer(message, dtype=np.int16)
             sd.play(data, 24000)
             sd.wait()
-            print("[INFO] Playing received audio.")
-
-
-async def uberduck_websocket():
-    async with websockets.connect(UBERDUCK_API) as websocket:
-        print(f"[INFO] Sending audio to the server...")
-        with open(RECORDING_FILE, "rb") as file:
-            audio_content = file.read()
-            await websocket.send(audio_content)
-            print("[INFO] Audio sent to the server.")
-
-        async for message in websocket:
-            if message == "done":
-                break
-            data = np.frombuffer(message, dtype=np.int16)
-            sd.play(data, 24000)
-            await sd.wait()
             print("[INFO] Playing received audio.")
 
 
@@ -158,7 +144,8 @@ class AudioRecorder:
         self.recording = True
         self.audio_data = []
         print("[INFO] Recording started...")
-        threading.Thread(target=self.record, daemon=True).start()
+        # threading.Thread(target=self.record, daemon=True).start()
+        self.record()
 
     def stop_recording(self):
         self.recording = False
@@ -167,14 +154,22 @@ class AudioRecorder:
 
     def record(self):
         with sd.InputStream(
-            callback=self.audio_callback, samplerate=SAMPLE_RATE, channels=CHANNELS
+            callback=self.audio_callback,
+            samplerate=SAMPLE_RATE,
+            channels=CHANNELS,
+            blocksize=SAMPLE_RATE,  # 1 block = 1 second (SAMPLE_RATE frames)
         ):
             while self.recording:
                 sd.sleep(100)
 
     def audio_callback(self, indata, frames, time, status):
+        audio_chunk = indata.copy()
         if self.recording:
-            self.audio_queue.put(indata.copy())
+            self.audio_queue.put(audio_chunk)
+
+        print("Norm:", np.linalg.norm(audio_chunk))
+        if np.linalg.norm(audio_chunk) < SILENCE_THRESHOLD:
+            self.stop_recording()
 
     def save_recording(self):
         while not self.audio_queue.empty():
@@ -183,6 +178,20 @@ class AudioRecorder:
         if self.audio_data:
             audio_array = np.concatenate(self.audio_data, axis=0)
             sf.write(RECORDING_FILE, audio_array, SAMPLE_RATE)
+
+        # TODO (Matthew): Clean this up
+        async def _websocket():
+            await uberduck_websocket()
+
+        try:
+            event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            print("Running async_to_sync websocket()")
+            sync_uberduck_websocket = async_to_sync(_websocket)
+            sync_uberduck_websocket()
+        else:
+            print("Created a new task for the websocket")
+            asyncio.ensure_future(uberduck_websocket())
 
     def play(self):
         print("[INFO] Playing...")
@@ -194,7 +203,7 @@ class AudioRecorder:
     async def start_processing(self):
         print("[INFO] Processing...")
         if USE_UBERDUCK:
-            uberduck_websocket()
+            await uberduck_websocket()
         else:
             openai_response()
         print("[INFO] Processing finished.")
@@ -214,24 +223,20 @@ class StateMachine:
     async def on_press(self, key):
         print("key: ", key)
         if key == "space":
-            if self.state == IDLE:
-                self.set_state(RECORDING)
-                self.recorder.start_recording()
-
-            elif self.state == RECORDING:
-                self.recorder.stop_recording()
-                self.set_state(PROCESSING)
-                await self.recorder.start_processing()
-                self.set_state(IDLE)
+            self.set_state(RECORDING)
+            self.recorder.start_recording()
 
     def run(self):
         listen_keyboard(on_press=self.on_press)
 
 
-if __name__ == "__main__":
+def play_startup_sound():
     startup_sound, fs = sf.read("startup.wav")
     sd.play(startup_sound, fs)
     sd.wait()
+
+
+if __name__ == "__main__":
     print("Press space to start recording.")
     sm = StateMachine()
     sm.run()
