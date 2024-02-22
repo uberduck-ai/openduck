@@ -10,9 +10,10 @@ import httpx
 from openduck_py.db import get_db_async
 from openduck_py.models import DBUser
 
-PROPEL_AUTH_API_KEY = os.environ.get("PROPEL_AUTH_API_KEY")
-# PROPEL_AUTH_ENDPOINT = "https://auth.uberduck.ai"
-PROPEL_AUTH_ENDPOINT = "https://5479410.propelauthtest.com"
+PROPEL_AUTH_API_KEY = os.environ.get("PROPEL_AUTH_API_KEY", "")
+PROPEL_AUTH_ENDPOINT = os.environ.get(
+    "PROPEL_AUTH_ENDPOINT", "https://5479410.propelauthtest.com"
+)
 
 
 async def get_by_propel_auth_user_id(user_id):
