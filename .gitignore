@@ -162,3 +162,5 @@ cython_debug/
 openduck-py/test.db
 .env.dev
 
+# Mac OS
+.DS_Store
