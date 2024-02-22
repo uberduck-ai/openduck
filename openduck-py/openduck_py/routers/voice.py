@@ -1,15 +1,12 @@
 import re
-from tempfile import NamedTemporaryFile
-from fastapi import APIRouter, Depends, Query, WebSocket
+from fastapi import APIRouter, Depends, WebSocket
 from sqlalchemy import select
 import whisper
 from time import time
-from torchaudio.functional import resample
 
 import numpy as np
 from asgiref.sync import sync_to_async
 import torch
-from torchaudio.functional import resample
 from nemo_text_processing.text_normalization.normalize import Normalizer
 
 from openduck_py.models import DBChatHistory
@@ -24,10 +21,8 @@ audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
-    resampled = resample(
-        torch.tensor(audio_data).to("cuda"), orig_freq=24000, new_freq=16000
-    )
-    return model.transcribe(resampled)["text"]
+    audio_tensor = torch.tensor(audio_data).to("cuda")
+    return model.transcribe(audio_tensor)["text"]
 
 
 _async_transcribe = sync_to_async(_transcribe)
