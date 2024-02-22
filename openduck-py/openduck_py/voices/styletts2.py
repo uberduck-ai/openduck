@@ -265,21 +265,15 @@ text_aligner = load_asr_models("models/text_aligner.pth", asr_config)
 pitch_extractor = load_f0_models("models/pitch_extractor.t7")
 plbert = load_plbert(plbert_config, "models/plbert.t7")
 model, sampler = load_model(
-    model_path="models/prototype_voice.pth",
+    model_path="models/cartoon-boy-upbeat.pth",
     text_aligner=text_aligner,
     pitch_extractor=pitch_extractor,
     plbert=plbert,
     model_params=model_params,
 )
 
-style_prompt_path = "bertie-chipper.wav"
-style_prompt_bucket = "uberduck-audio-files"
 
-ref_s = load_object_from_s3(
-    s3_key=style_prompt_path,
-    s3_bucket=style_prompt_bucket,
-    loader=lambda x: _compute_style(model, x),
-)
+ref_s = _compute_style(model, "models/cartoon-boy-upbeat.wav")
 
 
 def styletts2_inference(text: str, language: str = "english"):

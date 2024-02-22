@@ -58,17 +58,11 @@ async def audio_response(
             if volume < SILENCE_THRESHOLD and started_talking:
                 print("[INFO] Silence! My turn.")
                 break
-            elif volume > 3 * SILENCE_THRESHOLD:
+            elif volume > SILENCE_THRESHOLD:
                 print("I'm hearing you load and clear...")
                 started_talking = True
 
         audio_data = np.concatenate(audio_data)
-
-        # from scipy.io.wavfile import write
-
-        # output_filename = "user_audio_response.wav"
-        # sample_rate = 24000  # Assuming the sample rate is 16000
-        # write(output_filename, sample_rate, audio_data)
 
         t0 = time()
 
@@ -76,7 +70,7 @@ async def audio_response(
         print("transcription", transcription)
 
         if not transcription:
-            return
+            continue
 
         t_whisper = time()
 
