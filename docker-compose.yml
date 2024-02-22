@@ -18,13 +18,15 @@ services:
     image: 613148481050.dkr.ecr.us-west-2.amazonaws.com/python-base:06c86486c
     command: >
       bash -c "python openduck_local/openduck-py/setup.py develop
+      && pip install -r openduck_local/openduck-py/requirements.txt
       && uvicorn openduck_py.routers.main:app --reload --host 0.0.0.0 --port 8000"
     ports:
-      - "8003:8003"
+      - "8000:8000"
     volumes:
       - .:/usr/src/app/openduck_local
       - models-volume:/data
       - ../uberduck-ml-dev:/usr/src/app/openduck_ml_dev
+      - ./models:/usr/src/app/models
     env_file:
       - .env.dev
     environment:
