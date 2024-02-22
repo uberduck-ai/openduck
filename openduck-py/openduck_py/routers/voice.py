@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, WebSocket
 from sqlalchemy import select
 import whisper
 from time import time
+from torchaudio.functional import resample
 
 import numpy as np
 

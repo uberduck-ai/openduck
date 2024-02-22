@@ -18,8 +18,6 @@ Instructions:
 
 import argparse
 import os
-import requests
-import threading
 import queue
 from pathlib import Path
 import asyncio
@@ -27,111 +25,39 @@ import websockets
 
 import numpy as np
 import sounddevice as sd
-from sshkeyboard import listen_keyboard
 import soundfile as sf
 from openai import OpenAI
-from pydub import AudioSegment
 from uuid import uuid4
 from asgiref.sync import async_to_sync
 
 SAMPLE_RATE = 24000
 CHANNELS = 1
 
-IDLE = "IDLE"
-RECORDING = "RECORDING"
-PROCESSING = "PROCESSING"
-PLAYBACK = "PLAYBACK"
-RECORDING_FILE = "recording.wav"
-RESPONSE_FILE = "response.wav"
 UBERDUCK_API_HOST = os.environ["UBERDUCK_API_HOST"]
 
 SILENCE_THRESHOLD = 1.0
 
-speech_file_path = Path(__file__).parent / "response.wav"
-chat_history = [
-    {
-        "role": "system",
-        "content": "You are a conversational small stuffed animal toy for children. You are a conversational partner that teaches the child. Your responses are never more than three sentences. You always end with a question so I can respond.",
-    }
-]
-
-parser = argparse.ArgumentParser(description="Audio processing script.")
-parser.add_argument(
-    "--openai",
-    action="store_true",
-    help="Use OpenAI for processing instead of Uberduck",
-)
-args = parser.parse_args()
-USE_UBERDUCK = not args.openai
-if not USE_UBERDUCK:
-    client = OpenAI(
-        organization=os.environ["OPENAI_ORGANIZATION_ID"],
-    )
-
 session = str(uuid4())
 
 
-async def uberduck_websocket():
-    uri = f"ws://{UBERDUCK_API_HOST}?session_id={session}"
-    print(uri)
-    async with websockets.connect(uri) as websocket:
-        print(f"[INFO] Sending audio to the server...")
-        with open(RECORDING_FILE, "rb") as file:
-            audio_content = file.read()
-            await websocket.send(audio_content)
-            print("[INFO] Audio sent to the server.")
-
-        async for message in websocket:
-            data = np.frombuffer(message, dtype=np.int16)
-            sd.play(data, 24000)
-            sd.wait()
-            print("[INFO] Playing received audio.")
+async def send_audio(websocket, audio_queue):
+    while True:
+        print("sending audio...")
+        audio_chunk = audio_queue.get()
+        if audio_chunk is None:
+            break
+        await websocket.send(audio_chunk)
+        audio_queue.task_done()
+        await asyncio.sleep(0.01)
 
 
-def uberduck_response():
-    uri = "http://" + UBERDUCK_API_HOST
-    with open(RECORDING_FILE, "rb") as file:
-        print(f"[INFO] Sending audio to the server...")
-        files = {"audio": (RECORDING_FILE, file, "audio/wav")}
-        payload = {"session_id": session}
-        response = requests.post(uri, files=files, data=payload)
-        print(f"[INFO] Response received from the server: {response.status_code}")
-    if response.status_code == 200:
-        data = np.frombuffer(response.content, dtype=np.int16)
-        sf.write(RESPONSE_FILE, data, 24000)
-    else:
-        print(
-            f"[ERROR] Failed to get audio from the server, status code: {response.status_code}"
-        )
-
-
-def openai_response():
-    transcript = ""
-    with open(RECORDING_FILE, "rb") as audio_file:
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1", file=audio_file, response_format="text"
-        )
-
-    print(f"[PROCESSING] Transcript received: {transcript}")
-    chat_history.append({"role": "user", "content": transcript})
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo", messages=chat_history
-    )
-    text = response.choices[0].message.content
-    chat_history.append({"role": "assistant", "content": text})
-
-    print(f"[PROCESSING] Text response: {text}")
-    response = client.audio.speech.create(
-        model="tts-1-hd",
-        voice="alloy",
-        input=text,
-    )
-    print("[PROCESSING] TTS response received.")
-    response.stream_to_file(speech_file_path)
-
-    sound = AudioSegment.from_mp3(speech_file_path)
-    sound.export("response.wav", format="wav")
-    print("[PROCESSING] Audio saved to file.")
+async def receive_audio(websocket):
+    print("We're receiving audio!")
+    async for message in websocket:
+        data = np.frombuffer(message, dtype=np.int16)
+        sd.play(data, 24000)
+        sd.wait()
+        print("[INFO] Playing received audio.")
 
 
 class AudioRecorder:
@@ -152,58 +78,16 @@ class AudioRecorder:
             blocksize=SAMPLE_RATE,  # 1 block = 1 second (SAMPLE_RATE frames)
         )
         self.stream.start()  # Manually start the stream
-        while self.recording:
-            sd.sleep(100)
-        self.stream.stop()  # Manually stop the stream when done recording
-        print("[INFO] Recording stopped.")
+        sd.sleep(100)
+        # while self.recording:
+        #     sd.sleep(100)
+        # self.stream.stop()  # Manually stop the stream when done recording
+        # print("[INFO] Recording stopped.")
 
     def audio_callback(self, indata, frames, time, status):
-        audio_chunk = indata.copy()
+        audio_bytes = indata.tobytes()
         if self.recording:
-            self.audio_queue.put(audio_chunk)
-
-        print("Norm:", np.linalg.norm(audio_chunk))
-        if np.linalg.norm(audio_chunk) < SILENCE_THRESHOLD:
-            print("[INFO] Recording stopped.")
-            self.recording = False
-            self.save_recording()
-
-    def save_recording(self):
-        while not self.audio_queue.empty():
-            data = self.audio_queue.get()
-            self.audio_data.append(data)
-        if self.audio_data:
-            audio_array = np.concatenate(self.audio_data, axis=0)
-            sf.write(RECORDING_FILE, audio_array, SAMPLE_RATE)
-
-        # TODO (Matthew): Clean this up
-        async def _websocket():
-            await uberduck_websocket()
-
-        try:
-            event_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            print("Running async_to_sync websocket()")
-            sync_uberduck_websocket = async_to_sync(_websocket)
-            sync_uberduck_websocket()
-        else:
-            print("Created a new task for the websocket")
-            asyncio.ensure_future(uberduck_websocket())
-
-    def play(self):
-        print("[INFO] Playing...")
-        data, fs = sf.read("response.wav")
-        sd.play(data, 24000)
-        sd.wait()
-        print("[INFO] Playback finished. Press space to start recording.")
-
-    async def start_processing(self):
-        print("[INFO] Processing...")
-        if USE_UBERDUCK:
-            await uberduck_websocket()
-        else:
-            openai_response()
-        print("[INFO] Processing finished.")
+            self.audio_queue.put(audio_bytes)
 
 
 def play_startup_sound():
@@ -212,8 +96,25 @@ def play_startup_sound():
     sd.wait()
 
 
+class SharedState:
+    pass
+
+
+async def run_websocket(uri, audio_queue):
+    state = SharedState()
+    async with websockets.connect(uri) as websocket:
+        send_task = asyncio.create_task(send_audio(websocket, audio_queue))
+        receive_task = asyncio.create_task(receive_audio(websocket))
+        await asyncio.gather(send_task, receive_task)
+        while True:
+            print("I'm still running!")
+            await asyncio.sleep(1)
+
+
 if __name__ == "__main__":
+    uri = f"ws://{UBERDUCK_API_HOST}?session_id={session}"
     play_startup_sound()
+
     recorder = AudioRecorder()
-    while True:
-        recorder.start_recording()
+    recorder.start_recording()
+    asyncio.run(run_websocket(uri, recorder.audio_queue))
