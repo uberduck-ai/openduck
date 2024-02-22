@@ -30,7 +30,7 @@ from openai import OpenAI
 from uuid import uuid4
 from asgiref.sync import async_to_sync
 
-SAMPLE_RATE = 24000
+SAMPLE_RATE = 16000
 CHANNELS = 1
 
 UBERDUCK_API_HOST = os.environ["UBERDUCK_API_HOST"]
