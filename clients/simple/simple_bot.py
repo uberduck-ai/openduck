@@ -112,7 +112,8 @@ async def run_websocket(uri, audio_queue):
 
 
 if __name__ == "__main__":
-    uri = f"ws://{UBERDUCK_API_HOST}?session_id={session}"
+    ws_proto = "ws" if "localhost" in UBERDUCK_API_HOST else "wss"
+    uri = f"{ws_proto}://{UBERDUCK_API_HOST}?session_id={session}"
     play_startup_sound()
 
     recorder = AudioRecorder()
