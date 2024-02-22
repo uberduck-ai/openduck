@@ -1,7 +1,13 @@
 import re
 from fastapi import APIRouter, Depends, WebSocket
 from sqlalchemy import select
-import nemo.collections.asr as nemo_asr
+
+# NOTE(zach): On Mac OS, the first import fails, but the subsequent one
+# succeeds. /shrug.
+try:
+    import nemo.collections.asr.models as asr_models
+except OSError:
+    import nemo.collections.asr.models as asr_models
 from tempfile import NamedTemporaryFile
 from time import time
 from torchaudio.functional import resample
@@ -17,7 +23,7 @@ from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
-asr_model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained(
+asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
     model_name="nvidia/stt_en_fastconformer_ctc_large"
 )
 normalizer = Normalizer(input_case="cased", lang="en")
