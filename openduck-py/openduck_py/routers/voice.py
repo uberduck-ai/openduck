@@ -5,6 +5,7 @@ from sqlalchemy import select
 import nemo.collections.asr as nemo_asr
 from time import time
 from torchaudio.functional import resample
+from scipy.io import wavfile
 
 import numpy as np
 from asgiref.sync import sync_to_async
@@ -22,13 +23,11 @@ audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
-    # resampled = resample(
-    #     torch.tensor(audio_data), orig_freq=24000, new_freq=16000
-    # ).numpy()
-    # return asr_model.transcribe([resampled])[0]
-    with NamedTemporaryFile() as temp_file:
-        temp_file.write(audio_data)
-        transcription = asr_model.transcribe([resampled])[0]
+    with NamedTemporaryFile(suffix=".wav", mode='wb+') as temp_file:
+        wavfile.write(temp_file.name, 16000, audio_data)
+        temp_file.flush()
+        temp_file.seek(0)
+        transcription = asr_model.transcribe([temp_file.name])[0]
     return transcription
 
 
