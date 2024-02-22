@@ -14,6 +14,14 @@ Our kids should grow up in a household full of hackable droids they can play wit
 
 2. Download server-side models and put them inside of `uberduck-py/models` (**TODO: share models**.)
 
+### Install Dependencies
+
+1. Install espeak (`brew install espeak` on Mac OS or `sudo apt-get install espeak-ng` on Debian Linux).
+   
+   - There may be other environment variables you need to set on Mac OS. I had to: `export PHONEMIZER_ESPEAK_LIBRARY=/opt/homebrew/Cellar/espeak/1.48.04_1/lib/libespeak.dylib`.
+     
+3. `pip install -r openduck-py/requirements.txt`
+
 ### Without Docker
 
 `uvicorn openduck_py.routers.main:app --reload --env-file .env`
