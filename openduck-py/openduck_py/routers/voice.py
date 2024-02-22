@@ -35,7 +35,6 @@ _async_transcribe = sync_to_async(_transcribe)
 
 SILENCE_THRESHOLD = 1.0
 
-
 @audio_router.websocket("/response")
 async def audio_response(
     websocket: WebSocket,
@@ -115,7 +114,7 @@ async def audio_response(
 
         t_styletts = time()
 
-        print("Whisper", t_whisper - t0)
+        print("Fastconformer", t_whisper - t0)
         print("GPT", t_gpt - t_whisper)
         print("StyleTTS2", t_styletts - t_gpt)
 
