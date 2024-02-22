@@ -3,23 +3,42 @@ import re
 from tempfile import NamedTemporaryFile
 from time import time
 
+# NOTE(zach): On Mac OS, the first import fails, but the subsequent one
+# succeeds. /shrug.
+try:
+    import nemo.collections.asr.models as asr_models
+except OSError:
+    import nemo.collections.asr.models as asr_models
 
-from asgiref.sync import sync_to_async
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from nemo_text_processing.text_normalization.normalize import Normalizer
 import numpy as np
+from scipy.io import wavfile
 from sqlalchemy import select
 import torch
 from torchaudio.functional import resample
-import whisper
 
 from openduck_py.models import DBChatHistory
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
-whisper_model = whisper.load_model("base.en")  # Fastest possible whisper model
+asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
+    model_name="nvidia/stt_en_fastconformer_ctc_large"
+)
+normalizer = Normalizer(input_case="cased", lang="en")
 
 audio_router = APIRouter(prefix="/audio")
+
+
+def _transcribe(audio_data):
+    with NamedTemporaryFile(suffix=".wav", mode="wb+") as temp_file:
+        wavfile.write(temp_file.name, 16000, audio_data)
+        temp_file.flush()
+        temp_file.seek(0)
+        transcription = asr_model.transcribe([temp_file.name])[0]
+    return transcription
 
 
 class SileroVad:
@@ -120,7 +139,14 @@ class ResponseAgent:
         chat.history_json["messages"] = messages
         await db.commit()
 
-        sentences = re.split(r"(?<=[.!?]) +", response_message.content)
+        def normalize_text(text):
+            normalized_text = normalizer.normalize(text)
+            print("Original response:", text)
+            print("Normalized response:", normalized_text)
+            return normalized_text
+
+        normalized = normalize_text(response_message.content)
+        sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             print("RUNNING TTS IN EXECUTOR")
             audio_chunk_bytes = await loop.run_in_executor(None, _inference, sentence)
@@ -130,7 +156,7 @@ class ResponseAgent:
 
         t_styletts = time()
 
-        print("Whisper", t_whisper - t0)
+        print("Fastconformer", t_whisper - t0)
         print("GPT", t_gpt - t_whisper)
         print("StyleTTS2", t_styletts - t_gpt)
 
@@ -214,8 +240,6 @@ async def audio_response(
                         responder.interrupt(response_task)
             i = upper
 
-    audio_data = np.concatenate(audio_data)
-
     # NOTE(zach): Consider adding a flag to do this rather than leaving it
     # commented, so we can save audio recorded on the server to make sure it
     # sounds right.
@@ -224,4 +248,6 @@ async def audio_response(
     # sample_rate = 24000  # Assuming the sample rate is 16000
     # write(output_filename, sample_rate, audio_data)
 
+    # TODO(zach): We never actually close it right now, we wait for the client
+    # to close. But we should close it based on some timeout.
     await websocket.close()
