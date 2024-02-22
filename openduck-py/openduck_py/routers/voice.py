@@ -22,14 +22,14 @@ audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
-    resampled = resample(
-        torch.tensor(audio_data), orig_freq=24000, new_freq=16000
-    ).numpy()
-    return asr_model.transcribe([resampled])[0]
-    # with NamedTemporaryFile() as temp_file:
-    #     temp_file.write(audio_data)
-    #     transcription = model.transcribe(temp_file.name)["text"]
-    # return transcription
+    # resampled = resample(
+    #     torch.tensor(audio_data), orig_freq=24000, new_freq=16000
+    # ).numpy()
+    # return asr_model.transcribe([resampled])[0]
+    with NamedTemporaryFile() as temp_file:
+        temp_file.write(audio_data)
+        transcription = asr_model.transcribe([resampled])[0]
+    return transcription
 
 
 _async_transcribe = sync_to_async(_transcribe)
