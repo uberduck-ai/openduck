@@ -26,10 +26,6 @@ def _transcribe(audio_data):
         torch.tensor(audio_data).to("cuda"), orig_freq=24000, new_freq=16000
     )
     return model.transcribe(resampled)["text"]
-    # with NamedTemporaryFile() as temp_file:
-    #     temp_file.write(audio_data)
-    #     transcription = model.transcribe(temp_file.name)["text"]
-    # return transcription
 
 
 _async_transcribe = sync_to_async(_transcribe)
