@@ -10,13 +10,15 @@ import numpy as np
 from asgiref.sync import sync_to_async
 import torch
 from torchaudio.functional import resample
+from nemo_text_processing.text_normalization.normalize import Normalizer
 
 from openduck_py.models import DBChatHistory
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
-model = whisper.load_model("base.en")  # Fastest possible whisper model
+model = whisper.load_model("base.en")
+normalizer = Normalizer(input_case="cased", lang="en")
 
 audio_router = APIRouter(prefix="/audio")
 
@@ -46,16 +48,16 @@ async def audio_response(
         started_talking = False
         while True:
             message = await websocket.receive_bytes()
-            print("Received audio!")
+            # print("Received audio!")
             audio_chunk = np.frombuffer(message, dtype=np.float32)
             audio_data.append(audio_chunk)
             volume = np.linalg.norm(audio_chunk)
-            print("Norm:", volume)
+            # print("Norm:", volume)
             if volume < SILENCE_THRESHOLD and started_talking:
-                print("[INFO] Silence! My turn.")
+                # print("[INFO] Silence! My turn.")
                 break
             elif volume > SILENCE_THRESHOLD:
-                print("I'm hearing you load and clear...")
+                # print("I'm hearing you load and clear...")
                 started_talking = True
 
         audio_data = np.concatenate(audio_data)
@@ -101,7 +103,14 @@ async def audio_response(
         chat.history_json["messages"] = messages
         await db.commit()
 
-        sentences = re.split(r"(?<=[.!?]) +", response_message.content)
+        def normalize_text(text):
+            normalized_text = normalizer.normalize(text)
+            print("Original response:", text)
+            print("Normalized response:", normalized_text)
+            return normalized_text
+
+        normalized = normalize_text(response_message.content)
+        sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             # TODO: deal with asyncio
             audio_chunk = styletts2.styletts2_inference(text=sentence)

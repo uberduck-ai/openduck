@@ -4,6 +4,7 @@ aioboto3
 asgiref
 asyncpg
 azure-cognitiveservices-speech
+Cython
 databases
 daily-python
 google-cloud-texttospeech
@@ -17,9 +18,9 @@ pytest-mock
 einops
 einops_exts
 fastapi
-fugashi
 librosa
 munch
+nemo_toolkit[tts]
 nltk
 numpy
 openai
