@@ -1,4 +1,3 @@
-
 Cython
 aioboto3
 aiosqlite
@@ -6,12 +5,11 @@ alembic
 asgiref
 asyncpg
 azure-cognitiveservices-speech
-daily-python
-databases
 einops
 einops_exts
 fastapi
 google-cloud-texttospeech
+greenlet
 librosa
 munch
 nemo_text_processing
@@ -19,14 +17,12 @@ nemo_toolkit[asr]
 nltk
 numpy
 openai
-openai
-passlib
+openai-whisper
 phonemizer
 propelauth_fastapi
 pylru
 pytest
 pytest-mock
-python-jose==3.3.0
 python-multipart
 requests
 scipy
