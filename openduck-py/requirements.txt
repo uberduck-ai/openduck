@@ -4,12 +4,9 @@ aioboto3
 asgiref
 asyncpg
 azure-cognitiveservices-speech
-databases
-daily-python
 google-cloud-texttospeech
-passlib
+greenlet
 propelauth_fastapi
-python-jose==3.3.0
 openai
 openai-whisper
 pytest
