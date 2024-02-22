@@ -2,7 +2,7 @@ import re
 from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, Depends, Query, WebSocket
 from sqlalchemy import select
-import whisper
+import nemo.collections.asr as nemo_asr
 from time import time
 from torchaudio.functional import resample
 
@@ -16,16 +16,20 @@ from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
-model = whisper.load_model("base.en")  # Fastest possible whisper model
+asr_model = nemo_asr.models.EncDecCTCModelBPE.from_pretrained(model_name="nvidia/stt_en_fastconformer_ctc_large")
 
 audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
     resampled = resample(
-        torch.tensor(audio_data).to("cuda"), orig_freq=24000, new_freq=16000
-    )
-    return model.transcribe(resampled)["text"]
+        torch.tensor(audio_data), orig_freq=24000, new_freq=16000
+    ).numpy()
+    return asr_model.transcribe([resampled])[0]
+    # with NamedTemporaryFile() as temp_file:
+    #     temp_file.write(audio_data)
+    #     transcription = model.transcribe(temp_file.name)["text"]
+    # return transcription
 
 
 _async_transcribe = sync_to_async(_transcribe)

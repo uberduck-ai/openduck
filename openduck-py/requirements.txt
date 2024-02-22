@@ -11,7 +11,8 @@ passlib
 propelauth_fastapi
 python-jose==3.3.0
 openai
-openai-whisper
+git+https://github.com/NVIDIA/NeMo.git@5c3387dfcc3c31d55d65540df3f2ef9262107bf6
+lhotse>=1.20.0
 pytest
 pytest-mock
 einops
