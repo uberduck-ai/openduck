@@ -161,14 +161,6 @@ class ResponseAgent:
         print("StyleTTS2", t_styletts - t_gpt)
 
 
-def _transcribe(audio_data: np.ndarray):
-    t = torch.tensor(audio_data)
-    if torch.cuda.is_available():
-        t = t.cuda()
-    resampled = resample(t, orig_freq=24000, new_freq=16000)
-    return whisper_model.transcribe(resampled)["text"]
-
-
 SILENCE_THRESHOLD = 1.0
 
 
