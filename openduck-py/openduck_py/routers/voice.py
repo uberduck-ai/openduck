@@ -1,8 +1,17 @@
 import re
 from fastapi import APIRouter, Depends, WebSocket
 from sqlalchemy import select
-import whisper
+
+# NOTE(zach): On Mac OS, the first import fails, but the subsequent one
+# succeeds. /shrug.
+try:
+    import nemo.collections.asr.models as asr_models
+except OSError:
+    import nemo.collections.asr.models as asr_models
+from tempfile import NamedTemporaryFile
 from time import time
+from torchaudio.functional import resample
+from scipy.io import wavfile
 
 import numpy as np
 from asgiref.sync import sync_to_async
@@ -14,15 +23,21 @@ from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
-model = whisper.load_model("base.en")
+asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
+    model_name="nvidia/stt_en_fastconformer_ctc_large"
+)
 normalizer = Normalizer(input_case="cased", lang="en")
 
 audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
-    audio_tensor = torch.tensor(audio_data).to("cuda")
-    return model.transcribe(audio_tensor)["text"]
+    with NamedTemporaryFile(suffix=".wav", mode="wb+") as temp_file:
+        wavfile.write(temp_file.name, 16000, audio_data)
+        temp_file.flush()
+        temp_file.seek(0)
+        transcription = asr_model.transcribe([temp_file.name])[0]
+    return transcription
 
 
 _async_transcribe = sync_to_async(_transcribe)
@@ -116,7 +131,7 @@ async def audio_response(
 
         t_styletts = time()
 
-        print("Whisper", t_whisper - t0)
+        print("Fastconformer", t_whisper - t0)
         print("GPT", t_gpt - t_whisper)
         print("StyleTTS2", t_styletts - t_gpt)
 
