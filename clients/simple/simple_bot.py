@@ -16,21 +16,17 @@ Instructions:
     5. Press the space bar to start a new recording
 """
 
-import argparse
 import os
 import queue
-from pathlib import Path
 import asyncio
 import websockets
 
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
-from openai import OpenAI
 from uuid import uuid4
-from asgiref.sync import async_to_sync
 
-SAMPLE_RATE = 24000
+SAMPLE_RATE = 16000
 CHANNELS = 1
 
 UBERDUCK_API_HOST = os.environ["UBERDUCK_API_HOST"]
@@ -79,10 +75,6 @@ class AudioRecorder:
         )
         self.stream.start()  # Manually start the stream
         sd.sleep(100)
-        # while self.recording:
-        #     sd.sleep(100)
-        # self.stream.stop()  # Manually stop the stream when done recording
-        # print("[INFO] Recording stopped.")
 
     def audio_callback(self, indata, frames, time, status):
         audio_bytes = indata.tobytes()
