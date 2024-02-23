@@ -6,7 +6,7 @@ COPY openduck-py/requirements.txt /openduck-py/
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y uvicorn awscli && \ 
+    apt-get install -y uvicorn awscli espeak-ng && \
     apt-get clean
 
 RUN pip install --upgrade pip
