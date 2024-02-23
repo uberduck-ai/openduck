@@ -4,8 +4,6 @@ WORKDIR /openduck-py
 
 COPY openduck-py/requirements.txt /openduck-py/
 
-# Run commands inside the image
-# Update and upgrade the package list, then install the Python dependencies
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y uvicorn awscli && \ 
