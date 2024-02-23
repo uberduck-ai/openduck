@@ -8,7 +8,6 @@ import torch
 from scipy.io.wavfile import write as write_wav
 import librosa
 import torchaudio
-from fugashi import Tagger
 from nltk.tokenize import word_tokenize
 import numpy as np
 
@@ -143,26 +142,6 @@ def _compute_style(model, path):
         ref_p = model.predictor_encoder(mel_tensor.unsqueeze(1))
 
     return torch.cat([ref_s, ref_p], dim=1)
-
-
-def _kanji_to_hiragana(text):
-    tagger = Tagger()
-    words = tagger.parseToNodeList(text)
-    return " ".join([word.feature.kana or word.surface for word in words])
-
-
-def _japanese_to_ipa(text, phonemizer):
-    text = _kanji_to_hiragana(text)
-    text = text.replace("ィ", "イ")
-    text = text.replace("ェ", "エ")
-    text = text.replace("ェ", "ー")
-    text = text.replace("  ", " ")
-
-    ps = phonemizer.phonemize([text])
-
-    return ps
-
-
 def _split_by_language(text):
     """Takes a block of text and returns a list of blocks and a list of booleans indicating whether each block is in latin characters or not.
     This can be used for basic language splitting."""
@@ -200,29 +179,10 @@ def _split_by_language(text):
 
 def _phonemize(text, phonemizers, language):
     text = text.strip()
-    # NOTE (Sam): if voice is japanese, phonemize japanese and english separately to avoid issue where japanese phonemizer doesn't handle english well.
-    # We should probably extend this for other non-English langauges, but more subtle cases may be tougher.
-    if language == "japanese":
-        text_blocks, is_english = _split_by_language(text)
-        phonemes = []
-        for block, is_english in zip(text_blocks, is_english):
-            if is_english:
-                phonemizer = load_phonemizer("english", phonemizers)
-                ps = phonemizer.phonemize([block])
-                ps = word_tokenize(ps[0])  # reorganizes spaces and periods
-                ps = " ".join(ps)
-            else:
-                phonemizer = load_phonemizer("japanese", phonemizers)
-                ps = _japanese_to_ipa(block, phonemizer)
-                ps = word_tokenize(ps[0])
-                ps = " ".join(ps)
-            phonemes.append(ps)
-        ps = " ".join(phonemes)
-    else:
-        phonemizer = load_phonemizer(language, phonemizers)
-        ps = phonemizer.phonemize([text])
-        ps = word_tokenize(ps[0])  # reorganizes spaces and periods
-        ps = " ".join(ps)
+    phonemizer = load_phonemizer(language, phonemizers)
+    ps = phonemizer.phonemize([text])
+    ps = word_tokenize(ps[0])  # reorganizes spaces and periods
+    ps = " ".join(ps)
 
     return ps
 
