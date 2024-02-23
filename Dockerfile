@@ -1,8 +1,4 @@
 FROM python:3.11
-# nvcr.io/nvidia/pytorch:xx.xx-py3
-
-
-# ARG DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /openduck-py
 
@@ -20,9 +16,3 @@ RUN pip install Cython
 RUN pip install --no-cache-dir -r requirements.txt
 COPY ./openduck-py /openduck-py
 WORKDIR /openduck-py
-
-
-# TODO: Copy in the prototype models from S3 instead of assuming the user has them on disk
-
-# Run uvicorn when the container launches
-# CMD ["uvicorn", "openduck_py.routers.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
