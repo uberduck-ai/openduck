@@ -41,7 +41,6 @@ def identify_speakers(
         speaker_embedding (np.array): The speaker embedding to compare against.
         pipeline (Pipeline): The diarization pipeline.
         inference (Inference): The embedding inference pipeline.
-        filename (str): The filename of the input file.
 
     Returns:
         Dict: The segments and their distances from the speaker embedding.
