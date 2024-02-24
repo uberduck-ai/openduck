@@ -21,6 +21,7 @@ from torchaudio.functional import resample
 
 from openduck_py.models import DBChatHistory
 from openduck_py.db import get_db_async, AsyncSession
+from openduck_py.prompts import prompt
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
@@ -110,7 +111,7 @@ class ResponseAgent:
 
         system_prompt = {
             "role": "system",
-            "content": "You are a children's toy which can answer educational questions. You want to help your user and support them. Give short concise responses no more than 2 sentences.",
+            "content": prompt("system-prompt"),
         }
         new_message = {"role": "user", "content": transcription}
 
@@ -132,6 +133,10 @@ class ResponseAgent:
         t_gpt = time()
 
         response_message = response.choices[0].message
+
+        if "$ECHO" in response_message.content:
+            print("Echo detected, not sending response.")
+            return
 
         messages.append(
             {"role": response_message.role, "content": response_message.content}
@@ -159,9 +164,6 @@ class ResponseAgent:
         print("Fastconformer", t_whisper - t0)
         print("GPT", t_gpt - t_whisper)
         print("StyleTTS2", t_styletts - t_gpt)
-
-
-SILENCE_THRESHOLD = 1.0
 
 
 @audio_router.websocket("/response")
