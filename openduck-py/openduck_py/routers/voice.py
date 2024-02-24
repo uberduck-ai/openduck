@@ -202,11 +202,9 @@ async def audio_response(
         print("got a message.")
 
         # NOTE(zach): Client records at 22khz sample rate.
-        audio_chunk_24k = np.frombuffer(message, dtype=np.float32)
-        audio_16k: torch.Tensor = resample(
-            torch.tensor(audio_chunk_24k), orig_freq=24000, new_freq=16000
-        )
-        audio_data.append(audio_chunk_24k)
+        audio_16k_np = np.frombuffer(message, dtype=np.float32)
+        audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
+        audio_data.append(audio_16k_np)
         i = 0
         while i < len(audio_16k):
             upper = i + vad.window_size
