@@ -1,4 +1,5 @@
 asgiref
+click
 numpy
 openai
 pydub

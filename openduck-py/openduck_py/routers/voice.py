@@ -1,7 +1,10 @@
 import asyncio
+import os
 import re
 from tempfile import NamedTemporaryFile
 from time import time
+from typing import Optional
+import wave
 
 # NOTE(zach): On Mac OS, the first import fails, but the subsequent one
 # succeeds. /shrug.
@@ -21,6 +24,7 @@ from torchaudio.functional import resample
 
 from openduck_py.models import DBChatHistory
 from openduck_py.db import get_db_async, AsyncSession
+from openduck_py.prompts import prompt
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
 
@@ -39,6 +43,38 @@ def _transcribe(audio_data):
         temp_file.seek(0)
         transcription = asr_model.transcribe([temp_file.name])[0]
     return transcription
+
+
+class WavAppender:
+    def __init__(self, wav_file_path="output.wav"):
+        self.wav_file_path = wav_file_path
+        self.file = None
+        self.params_set = False
+
+    def open_file(self):
+        self.file = wave.open(
+            self.wav_file_path,
+            "wb" if not os.path.exists(self.wav_file_path) else "r+b",
+        )
+
+    def append(self, audio_data: np.ndarray):
+        if audio_data.dtype == np.float32:
+            audio_data = np.round(audio_data * 32767).astype(np.int16)
+        assert audio_data.dtype == np.int16
+        if not self.file:
+            self.open_file()
+        if not self.params_set:
+            self.file.setnchannels(1)  # Mono
+            self.file.setsampwidth(2)  # 16 bits
+            self.file.setframerate(16000)  # 16kHz
+            self.params_set = True
+        self.file.writeframes(audio_data.tobytes())
+
+    def close_file(self):
+        if self.file:
+            self.file.close()
+            self.file = None
+            self.params_set = False
 
 
 class SileroVad:
@@ -110,7 +146,7 @@ class ResponseAgent:
 
         system_prompt = {
             "role": "system",
-            "content": "You are a children's toy which can answer educational questions. You want to help your user and support them. Give short concise responses no more than 2 sentences.",
+            "content": prompt("system-prompt"),
         }
         new_message = {"role": "user", "content": transcription}
 
@@ -132,6 +168,10 @@ class ResponseAgent:
         t_gpt = time()
 
         response_message = response.choices[0].message
+
+        if "$ECHO" in response_message.content:
+            print("Echo detected, not sending response.")
+            return
 
         messages.append(
             {"role": response_message.role, "content": response_message.content}
@@ -161,76 +201,86 @@ class ResponseAgent:
         print("StyleTTS2", t_styletts - t_gpt)
 
 
-SILENCE_THRESHOLD = 1.0
+def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
+    reset_state = False
+    if response_task and response_task.done():
+        try:
+            response_task.result()
+        except asyncio.CancelledError:
+            print("response task was cancelled")
+        except Exception as e:
+            print("response task raised an exception:", e)
+        else:
+            print(
+                "response task completed successfully. Resetting audio_data and response_task"
+            )
+            reset_state = True
+        return reset_state
 
 
 @audio_router.websocket("/response")
 async def audio_response(
     websocket: WebSocket,
     session_id: str,
+    record: bool = False,
     db: AsyncSession = Depends(get_db_async),
 ):
     await websocket.accept()
 
     vad = SileroVad()
     responder = ResponseAgent()
+    recorder = WavAppender(wav_file_path=f"{session_id}.wav")
 
     audio_data = []
     response_task = None
-    while True:
-        # Check for exceptions in response_task
-        if response_task and response_task.done():
-            try:
-                response_task.result()
-            except asyncio.CancelledError:
-                print("response task was cancelled")
-            except Exception as e:
-                print("response task raised an exception:", e)
-            else:
-                print(
-                    "response task completed successfully. Resetting audio_data and response_task"
-                )
+    try:
+        while True:
+            if _check_for_exceptions(response_task):
                 audio_data = []
                 response_task = None
-        try:
-            message = await websocket.receive_bytes()
-        except WebSocketDisconnect:
-            print("websocket disconnected")
-            return
-        print("got a message.")
+            try:
+                message = await websocket.receive_bytes()
+            except WebSocketDisconnect:
+                print("websocket disconnected")
+                return
+            print("got a message.")
 
-        # NOTE(zach): Client records at 22khz sample rate.
-        audio_chunk_24k = np.frombuffer(message, dtype=np.float32)
-        audio_16k: torch.Tensor = resample(
-            torch.tensor(audio_chunk_24k), orig_freq=24000, new_freq=16000
-        )
-        audio_data.append(audio_chunk_24k)
-        i = 0
-        while i < len(audio_16k):
-            upper = i + vad.window_size
-            if len(audio_16k) - vad.window_size < upper:
-                upper = len(audio_16k)
-            audio_16k_chunk = audio_16k[i:upper]
-            vad_result = vad(audio_16k_chunk)
-            if vad_result:
-                if "end" in vad_result:
-                    print("end of speech detected.")
-                    if response_task is None or response_task.done():
-                        response_task = asyncio.create_task(
-                            responder.start_response(
-                                websocket,
-                                db,
-                                np.concatenate(audio_data),
-                                session_id,
+            # NOTE(zach): Client records at 16khz sample rate.
+            audio_16k_np = np.frombuffer(message, dtype=np.float32)
+            print("audio max and min: ", audio_16k_np.max(), audio_16k_np.min())
+
+            audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
+            audio_data.append(audio_16k_np)
+            if record:
+                recorder.append(audio_16k_np)
+            i = 0
+            while i < len(audio_16k):
+                upper = i + vad.window_size
+                if len(audio_16k) - vad.window_size < upper:
+                    upper = len(audio_16k)
+                audio_16k_chunk = audio_16k[i:upper]
+                vad_result = vad(audio_16k_chunk)
+                if vad_result:
+                    if "end" in vad_result:
+                        print("end of speech detected.")
+                        if response_task is None or response_task.done():
+                            response_task = asyncio.create_task(
+                                responder.start_response(
+                                    websocket,
+                                    db,
+                                    np.concatenate(audio_data),
+                                    session_id,
+                                )
                             )
-                        )
-                    else:
-                        print("already responding")
-                if "start" in vad_result:
-                    print("start of speech detected.")
-                    if response_task and not response_task.done():
-                        responder.interrupt(response_task)
-            i = upper
+                        else:
+                            print("already responding")
+                    if "start" in vad_result:
+                        print("start of speech detected.")
+                        if response_task and not response_task.done():
+                            responder.interrupt(response_task)
+                i = upper
+    finally:
+        recorder.close_file()
 
     # NOTE(zach): Consider adding a flag to do this rather than leaving it
     # commented, so we can save audio recorded on the server to make sure it

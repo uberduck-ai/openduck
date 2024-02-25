@@ -21,6 +21,7 @@ import queue
 import asyncio
 import websockets
 
+import click
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
@@ -103,11 +104,18 @@ async def run_websocket(uri, audio_queue):
             await asyncio.sleep(1)
 
 
-if __name__ == "__main__":
+@click.command()
+@click.option("--record", is_flag=True, help="Enable recording.")
+def main(record):
     ws_proto = "ws" if "localhost" in UBERDUCK_API_HOST else "wss"
-    uri = f"{ws_proto}://{UBERDUCK_API_HOST}?session_id={session}"
+    record_param = "true" if record else "false"
+    uri = f"{ws_proto}://{UBERDUCK_API_HOST}?session_id={session}&record={record_param}"
     play_startup_sound()
 
     recorder = AudioRecorder()
     recorder.start_recording()
     asyncio.run(run_websocket(uri, recorder.audio_queue))
+
+
+if __name__ == "__main__":
+    main()
