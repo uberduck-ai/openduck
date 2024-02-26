@@ -147,7 +147,6 @@ class ResponseAgent:
 
         rec_time = time()
         # wavfile.write(f"{rec_time}_before.wav", 16000, audio_data)
-        # np.save(f"{rec_time}_audio_data.npy", audio_data)
         audio_data = segment_audio(
             audio_data=audio_data,
             sample_rate=16000,
