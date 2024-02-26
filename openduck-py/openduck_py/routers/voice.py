@@ -147,8 +147,6 @@ class ResponseAgent:
 
         rec_time = time()
         wavfile.write(f"{rec_time}_before.wav", 16000, audio_data)
-        print(f"Audio data shape before: {audio_data.shape}")
-
         np.save(f"{rec_time}_audio_data.npy", audio_data)
         audio_data = segment_audio(
             audio_data=audio_data,
@@ -157,9 +155,8 @@ class ResponseAgent:
             pipeline=pipeline,
             inference=inference,
         )
-        print(f"Audio data shape after: {audio_data.shape}")
+        
         wavfile.write(f"{rec_time}_after.wav", 16000, audio_data)
-
         t0 = time()
 
         print("RUNNING TRANSCRIBE IN EXECUTOR")
@@ -167,7 +164,7 @@ class ResponseAgent:
         print("transcription", transcription)
 
         if not transcription:
-            return
+            return 
 
         t_whisper = time()
 
