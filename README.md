@@ -24,7 +24,10 @@ Our kids should grow up in a household full of hackable droids they can play wit
 
 ### Without Docker
 
-`uvicorn openduck_py.routers.main:app --reload --env-file .env`
+```
+cd openduck-py
+uvicorn openduck_py.routers.main:app --reload --env-file ../.env
+```
 
 ### With Docker
 
