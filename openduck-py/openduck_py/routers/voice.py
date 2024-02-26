@@ -160,7 +160,6 @@ class ResponseAgent:
                 session_id=session_id, history_json={"messages": [system_prompt]}
             )
             db.add(chat)
-
         messages = chat.history_json["messages"]
         messages.append(new_message)
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
@@ -186,6 +185,7 @@ class ResponseAgent:
             return normalized_text
 
         normalized = normalize_text(response_message.content)
+        t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             print("RUNNING TTS IN EXECUTOR")
@@ -198,7 +198,8 @@ class ResponseAgent:
 
         print("Fastconformer", t_whisper - t0)
         print("GPT", t_gpt - t_whisper)
-        print("StyleTTS2", t_styletts - t_gpt)
+        print("Normalizer", t_normalize - t_gpt)
+        print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:

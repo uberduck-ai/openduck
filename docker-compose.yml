@@ -1,45 +1,13 @@
-version: "3"
+version: '3.12'
 services:
-  db:
-    build:
-      context: ./build/db
-    container_name: db
-    environment:
-      POSTGRES_USER: uberduck
-      POSTGRES_PASSWORD: "uberduckp@w"
-  db-test:
-    container_name: db-test
-    image: "postgres:12.6"
-    environment:
-      POSTGRES_USER: uberduck
-      POSTGRES_PASSWORD: "uberduckp@w"
-  api:
-    container_name: api
-    image: 613148481050.dkr.ecr.us-west-2.amazonaws.com/python-base:06c86486c
-    command: >
-      bash -c "python openduck_local/openduck-py/setup.py develop
-      && pip install -r openduck_local/openduck-py/requirements.txt
-      && uvicorn openduck_py.routers.main:app --reload --host 0.0.0.0 --port 8000"
+  web:
+    build: .
+    command: bash -c "cd openduck-py && python setup.py develop && aws s3 cp --recursive s3://uberduck-models-us-west-2/prototype models && uvicorn openduck_py.routers.main:app --reload --host 0.0.0.0 --port 8000"
+    working_dir: /openduck-py
+    volumes:
+      - .:/openduck-py
     ports:
       - "8000:8000"
-    volumes:
-      - .:/usr/src/app/openduck_local
-      - models-volume:/data
-      - ../uberduck-ml-dev:/usr/src/app/openduck_ml_dev
-      - ./models:/usr/src/app/models
     env_file:
       - .env.dev
-    environment:
-      POSTGRESQL_USER: uberduck
-      POSTGRESQL_PASSWORD: "uberduckp@w"
-      POSTGRESQL_HOST: db
-      REDIS_HOST: redis
-      PYTHONPATH: /usr/src/app/openduck_local/openduck-py
-      SHOW_OPENAPI_DOCS: 1
-      TTS_LOGIN_REQUIRED: 1
-      DEPLOY_ENV: "dev" # when set to "dev", it sets IS_DEV = True
-      URL_SERIALIZER_KEY: "its-a-secret!"
-  redis:
-    image: "redis:alpine"
-volumes:
-  models-volume:
+    runtime: nvidia

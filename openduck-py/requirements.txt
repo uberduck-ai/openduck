@@ -30,6 +30,7 @@ setuptools
 sqlalchemy
 sqlalchemy_utils
 torch
+torchvision
 torchaudio
 transformers
 uvicorn[standard]
