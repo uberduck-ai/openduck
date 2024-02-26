@@ -29,9 +29,6 @@ scipy
 setuptools
 sqlalchemy
 sqlalchemy_utils
-torch
-torchaudio
-torchvision
 transformers
 uvicorn[standard]
 websockets
