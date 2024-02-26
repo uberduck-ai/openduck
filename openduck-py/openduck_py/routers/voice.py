@@ -160,7 +160,6 @@ class ResponseAgent:
                 session_id=session_id, history_json={"messages": [system_prompt]}
             )
             db.add(chat)
-
         messages = chat.history_json["messages"]
         messages.append(new_message)
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
