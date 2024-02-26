@@ -58,13 +58,12 @@ def identify_speakers(
 
     audio_length_seconds = (
         audio_data.shape[1] / sample_rate
-    )  # Corrected to use the second dimension of audio_data
+    ) 
 
     for segment, _, speaker in output.itertracks(yield_label=True):
-        # Boundary check for the segment
         segment_end = min(segment.end, audio_length_seconds)
         if segment.start >= segment_end or segment.end - segment.start < 0.3:
-            continue  # Skip segments that are out of bounds or have no duration
+            continue  
 
         start = time.time()
         adjusted_segment = Segment(segment.start, segment_end)
@@ -117,10 +116,7 @@ def segment_audio(
     inference,
 ) -> np.array:
 
-    # converts to [1, n] shape if not already
-    # audio_data = audio_data.reshape(1, -1) if len(audio_data.shape) == 1 else audio_data
     audio_data_tensor = torch.tensor(audio_data).unsqueeze(0)
-    # Identify speakers
     start = time.time()
     speaker_segments = identify_speakers(
         audio_data=audio_data_tensor,
@@ -131,7 +127,6 @@ def segment_audio(
     )
     print(f"[SEGMENTATION] Speaker identification took {time.time() - start:.3f} seconds")
 
-    # Filter identified speaker segments
     start = time.time()
     speaker_segments = filter_voices(speaker_segments)
     BUFFER = 0.1  # seconds
