@@ -145,8 +145,6 @@ class ResponseAgent:
 
         loop = asyncio.get_running_loop()
 
-        rec_time = time()
-        # wavfile.write(f"{rec_time}_before.wav", 16000, audio_data)
         audio_data = segment_audio(
             audio_data=audio_data,
             sample_rate=16000,
@@ -155,7 +153,6 @@ class ResponseAgent:
             inference=inference,
         )
         
-        # wavfile.write(f"{rec_time}_after.wav", 16000, audio_data)
         t0 = time()
 
         print("RUNNING TRANSCRIBE IN EXECUTOR")

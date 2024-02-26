@@ -1,6 +1,6 @@
 import time
 import os
-from typing import Dict
+from typing import Dict, List
 
 import torch
 import numpy as np
@@ -98,14 +98,6 @@ def filter_voices(d: dict, threshold: float = 0.5):
             new_d[k] = new_v
     return new_d
 
-
-import numpy as np
-import torch
-from typing import List
-
-
-import numpy as np
-import torch
 
 
 def segment_audio(
