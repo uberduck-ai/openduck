@@ -163,7 +163,7 @@ class ResponseAgent:
         print("transcription", transcription)
 
         if not transcription:
-            return 
+            return
 
         t_whisper = time()
 
