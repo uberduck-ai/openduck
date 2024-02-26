@@ -29,3 +29,14 @@ Our kids should grow up in a household full of hackable droids they can play wit
 ### With Docker
 
 `docker-compose up`
+
+### Run the client
+
+#### Simple Python Client
+
+```
+cd clients/simple
+# Lighter-weight requirements
+pip install -r requirements.txt
+python simple_bot.py --record
+```
