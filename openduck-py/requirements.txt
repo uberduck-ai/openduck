@@ -8,6 +8,9 @@ azure-cognitiveservices-speech
 einops
 einops_exts
 fastapi
+Flask 
+Flask-Admin 
+Flask-SQLAlchemy
 google-cloud-texttospeech
 greenlet
 librosa
