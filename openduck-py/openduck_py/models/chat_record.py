@@ -18,7 +18,7 @@ class DBChatRecord(Base):
     session_id = Column(Text, ForeignKey("chat_history.session_id", ondelete="CASCADE"), nullable=False, index=True)
     event_name = Column(Text)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
-    metadata = Column(MutableDict.as_mutable(JSON))
+    meta_json = Column(MutableDict.as_mutable(JSON))
 
 
 chat_records = DBChatRecord.__table__
