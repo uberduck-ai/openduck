@@ -5,9 +5,9 @@ from sqlalchemy.orm import configure_mappers, declarative_base, sessionmaker
 
 DB_USER = "uberduck"
 
-# Create a connection string for sqlite instead of postgres
-connection_string = "sqlite:///test.db"
+connection_string = "sqlite:////openduck-py/openduck-py/test.db"
 async_connection_string = "sqlite+aiosqlite:///test.db"
+
 
 
 class UberBase:
