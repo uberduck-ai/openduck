@@ -3,7 +3,7 @@ import os
 import re
 from tempfile import NamedTemporaryFile
 from time import time
-from typing import Optional
+from typing import Optional, Dict
 import wave
 import requests
 
@@ -173,7 +173,7 @@ class ResponseAgent:
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
-        await log_event(db, self.session_id, "transcribed_audio")    # TODO: add the transcription to the meta_json
+        await log_event(db, self.session_id, "transcribed_audio", meta={"transcript": transcription})
 
         if not transcription:
             return
@@ -199,25 +199,26 @@ class ResponseAgent:
         messages = chat.history_json["messages"]
         messages.append(new_message)
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
-        await log_event(db, self.session_id, "generated_completion")
+        response_message = response.choices[0].message
+        completion = response_message.content
+        await log_event(db, self.session_id, "generated_completion", meta={"completion": completion})
 
         t_gpt = time()
 
-        response_message = response.choices[0].message
         print(f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens")
 
-        if "$ECHO" in response_message.content:
+        if "$ECHO" in completion:
             print("Echo detected, not sending response.")
             return
 
         messages.append(
-            {"role": response_message.role, "content": response_message.content}
+            {"role": response_message.role, "content": completion}
         )
         chat.history_json["messages"] = messages
         await db.commit()
 
         normalized = normalize_text(response_message.content)
-        await log_event(db, self.session_id, "normalized_text")
+        await log_event(db, self.session_id, "normalized_text", meta={"normalized_text": normalized})
         t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
@@ -251,10 +252,11 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
         return reset_state
 
 
-async def log_event(db: AsyncSession, session_id: str, event: EventName):
+async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: Optional[Dict[str, str]] = None):
     record = DBChatRecord(
         session_id=session_id,
-        event_name=event
+        event_name=event,
+        meta_json=meta
     )
     db.add(record)
     await db.commit()
