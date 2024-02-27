@@ -23,6 +23,8 @@ openai
 openai-whisper
 phonemizer
 propelauth_fastapi
+pyannote.core
+pyannote.audio
 pylru
 pytest
 pytest-mock

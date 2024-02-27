@@ -2,7 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
-from openduck_py.db import connection_string, async_connection_string
+from openduck_py.db import connection_string
 from openduck_py.models import DBChatHistory
 
 app = Flask(__name__)
@@ -15,11 +15,6 @@ db = SQLAlchemy(app)
 admin = Admin(app, name='Openduck', template_mode='bootstrap3')
 # Add model views
 admin.add_view(ModelView(DBChatHistory, db.session))
-
-# START HERE: Access the actual models in their routes or something. 
-@app.route("/")
-def home():
-    return "Hello world!"
 
 if __name__ == "__main__":
     app.run(port="8000", debug=True)

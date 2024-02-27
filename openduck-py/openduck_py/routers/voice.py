@@ -23,7 +23,7 @@ from sqlalchemy import select
 import torch
 from torchaudio.functional import resample
 
-from openduck_py.models import DBChatHistory
+from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.prompts import prompt
 from openduck_py.voices import styletts2
@@ -285,6 +285,12 @@ async def audio_response(
                 if vad_result:
                     if "end" in vad_result:
                         print("end of speech detected.")
+                        chat_record = DBChatRecord(
+                            session_id=session_id,
+                            event_name="detected_end_of_speech"
+                        )
+                        db.add(chat_record)
+                        await db.commit()
                         if response_task is None or response_task.done():
                             response_task = asyncio.create_task(
                                 responder.start_response(
@@ -298,6 +304,12 @@ async def audio_response(
                             print("already responding")
                     if "start" in vad_result:
                         print("start of speech detected.")
+                        chat_record = DBChatRecord(
+                            session_id=session_id,
+                            event_name="detected_start_of_speech"
+                        )
+                        db.add(chat_record)
+                        await db.commit()
                         if response_task and not response_task.done():
                             responder.interrupt(response_task)
                 i = upper
