@@ -46,4 +46,4 @@ python simple_bot.py --record
 
 ### Troubleshooting
 
-- The Simple Python client sometimes has strange behavior. You can try restarting your OS's audio services, e.g. `sudo pkill coreaudiod` on Mac OS.
+- The Simple Python client sometimes has strange audio playback bugs. You can try restarting your OS's audio services, e.g. `sudo pkill coreaudiod` on Mac OS.
