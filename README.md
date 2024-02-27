@@ -43,3 +43,7 @@ cd clients/simple
 pip install -r requirements.txt
 python simple_bot.py --record
 ```
+
+### Troubleshooting
+
+- The Simple Python client sometimes has strange audio playback bugs. You can try restarting your OS's audio services, e.g. `sudo pkill coreaudiod` on Mac OS.
