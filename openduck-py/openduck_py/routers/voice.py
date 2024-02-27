@@ -187,6 +187,7 @@ class ResponseAgent:
         t_gpt = time()
 
         response_message = response.choices[0].message
+        print(f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens")
 
         if "$ECHO" in response_message.content:
             print("Echo detected, not sending response.")
