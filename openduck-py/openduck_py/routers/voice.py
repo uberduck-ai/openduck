@@ -157,6 +157,7 @@ class ResponseAgent:
 
         def _inference(sentence: str):
             audio_chunk = styletts2.styletts2_inference(text=sentence)
+            
             audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
             return audio_chunk_bytes
 
@@ -223,9 +224,8 @@ class ResponseAgent:
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             audio_chunk_bytes = await loop.run_in_executor(None, _inference, sentence)
-            await log_event(db, self.session_id, "generated_tts")
+            await log_event(db, self.session_id, "generated_tts", audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16))
             await websocket.send_bytes(audio_chunk_bytes)
-            await log_event(db, self.session_id, "sent_audio")
 
         t_styletts = time()
 
@@ -252,7 +252,21 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
         return reset_state
 
 
-async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: Optional[Dict[str, str]] = None):
+async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: Optional[Dict[str, str]] = None, audio: Optional[np.ndarray] = None):
+    if audio is not None:
+        counter = 0
+        path = f"/openduck-py/openduck-py/logs/{session_id}/{event}_{counter}.wav"
+        session_folder = os.path.dirname(path)
+        if not os.path.exists(session_folder):
+            os.makedirs(session_folder)
+        base_path = path.rsplit("_", 1)[0]
+        while os.path.exists(path):
+            counter += 1
+            path = f"{base_path}_{counter}.wav"
+
+        wavfile.write(path, 16000, audio) 
+        print(f"Wrote wavfile to {path}")
+        meta = {"audio_url": path}
     record = DBChatRecord(
         session_id=session_id,
         event_name=event,
@@ -291,7 +305,8 @@ async def audio_response(
 
             # NOTE(zach): Client records at 16khz sample rate.
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
-            await log_event(db, session_id, "received_audio")
+
+            await log_event(db, session_id, "received_audio", audio=audio_16k_np)
 
             audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
             audio_data.append(audio_16k_np)
