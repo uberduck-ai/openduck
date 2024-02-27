@@ -155,7 +155,6 @@ class ResponseAgent:
         
         t0 = time()
 
-        print("RUNNING TRANSCRIBE IN EXECUTOR")
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
 
@@ -209,11 +208,8 @@ class ResponseAgent:
         t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
-            print("RUNNING TTS IN EXECUTOR")
             audio_chunk_bytes = await loop.run_in_executor(None, _inference, sentence)
-            print("DONE RUNNING IN EXECUTOR")
             await websocket.send_bytes(audio_chunk_bytes)
-            print("DONE SENDING BYTES")
 
         t_styletts = time()
 
@@ -265,11 +261,9 @@ async def audio_response(
             except WebSocketDisconnect:
                 print("websocket disconnected")
                 return
-            print("got a message.")
 
             # NOTE(zach): Client records at 16khz sample rate.
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
-            print("audio max and min: ", audio_16k_np.max(), audio_16k_np.min())
 
             audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
             audio_data.append(audio_16k_np)
