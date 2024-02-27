@@ -1,8 +1,8 @@
 """add_chat_records
 
-Revision ID: f81331801fd7
+Revision ID: e0f409cb4d81
 Revises: c4e71a1a96da
-Create Date: 2024-02-27 18:59:36.291728+00:00
+Create Date: 2024-02-27 20:15:38.956722+00:00
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import sqlite
 
 # revision identifiers, used by Alembic.
-revision: str = 'f81331801fd7'
+revision: str = 'e0f409cb4d81'
 down_revision: Union[str, None] = 'c4e71a1a96da'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -23,7 +23,7 @@ def upgrade() -> None:
     op.create_table('chat_record',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('session_id', sa.Text(), nullable=False),
-    sa.Column('event_name', sa.Text(), nullable=True),
+    sa.Column('event_name', sa.Text(), nullable=False),
     sa.Column('timestamp', sa.DateTime(), nullable=False),
     sa.Column('meta_json', sqlite.JSON(), nullable=True),
     sa.ForeignKeyConstraint(['session_id'], ['chat_history.session_id'], ondelete='CASCADE'),
