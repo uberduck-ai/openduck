@@ -14,6 +14,10 @@ from sqlalchemy.ext.mutable import MutableDict
 from openduck_py.db import Base
 
 EventName = Literal[
+    "started_session",
+    "ended_session",
+    "received_audio",
+    "sent_audio",
     "detected_start_of_speech",
     "detected_end_of_speech",
     "started_response",
