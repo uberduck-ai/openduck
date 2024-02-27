@@ -8,9 +8,10 @@ completion_tokens_per_request = 30
 prompt_token_price = 0.0000005  # $/token
 completion_token_price = 0.0000015  # $/token
 
+# Runtimes from profiling on a g4dn.xlarge, 3 sentences of response
 stt_runtime = 0.15  # seconds
 tts_runtime = 2.0  # seconds per inference
-ec2_price = 0.526  # $/hour
+ec2_price = 0.526  # $/hour, g4dn.xlarge ec2 instance
 usage_minutes_per_day = 60  # Minutes per user per day
 requests_per_minute = 3  # How many responses are generated per minute for each user
 
