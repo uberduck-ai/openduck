@@ -19,8 +19,6 @@ class DBChatRecord(Base):
     event_name = Column(Text)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
     metadata = Column(MutableDict.as_mutable(JSON))
-    audio = Column(Text)    # Audio recording URL in S3
-    # Do I need to add relationship("DBChatHistory")?
 
 
 chat_records = DBChatRecord.__table__
