@@ -10,7 +10,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.ext.mutable import MutableDict
-
 from openduck_py.db import Base
 
 EventName = Literal[
@@ -36,6 +35,5 @@ class DBChatRecord(Base):
     event_name = Column(Text, nullable=False)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
     meta_json = Column(MutableDict.as_mutable(JSON))
-
 
 chat_records = DBChatRecord.__table__

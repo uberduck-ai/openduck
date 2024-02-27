@@ -24,6 +24,7 @@ import torch
 from torchaudio.functional import resample
 
 from openduck_py.models import DBChatHistory, DBChatRecord
+from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.prompts import prompt
 from openduck_py.voices import styletts2
@@ -131,7 +132,10 @@ class SileroVad:
 
 
 class ResponseAgent:
-    is_responding = False
+
+    def __init__(self, session_id: str):
+        self.is_responding = False
+        self.session_id = session_id
 
     def interrupt(self, task: asyncio.Task):
         if self.is_responding:
@@ -146,9 +150,9 @@ class ResponseAgent:
         websocket: WebSocket,
         db: AsyncSession,
         audio_data: np.ndarray,
-        session_id: str,
     ):
         print("starting response")
+        await log_event(db, self.session_id, "started_response")
         self.is_responding = True
 
         def _inference(sentence: str):
@@ -169,6 +173,7 @@ class ResponseAgent:
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
+        await log_event(db, self.session_id, "transcribed_audio")    # TODO: add the transcription to the meta_json
 
         if not transcription:
             return
@@ -183,17 +188,18 @@ class ResponseAgent:
 
         chat = (
             await db.execute(
-                select(DBChatHistory).where(DBChatHistory.session_id == session_id)
+                select(DBChatHistory).where(DBChatHistory.session_id == self.session_id)
             )
         ).scalar_one_or_none()
         if chat is None:
             chat = DBChatHistory(
-                session_id=session_id, history_json={"messages": [system_prompt]}
+                session_id=self.session_id, history_json={"messages": [system_prompt]}
             )
             db.add(chat)
         messages = chat.history_json["messages"]
         messages.append(new_message)
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
+        await log_event(db, self.session_id, "generated_completion")
 
         t_gpt = time()
 
@@ -211,11 +217,14 @@ class ResponseAgent:
         await db.commit()
 
         normalized = normalize_text(response_message.content)
+        await log_event(db, self.session_id, "normalized_text")
         t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             audio_chunk_bytes = await loop.run_in_executor(None, _inference, sentence)
+            await log_event(db, self.session_id, "generated_tts")
             await websocket.send_bytes(audio_chunk_bytes)
+            await log_event(db, self.session_id, "sent_audio")
 
         t_styletts = time()
 
@@ -242,6 +251,15 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
         return reset_state
 
 
+async def log_event(db: AsyncSession, session_id: str, event: EventName):
+    record = DBChatRecord(
+        session_id=session_id,
+        event_name=event
+    )
+    db.add(record)
+    await db.commit()
+
+
 @audio_router.websocket("/response")
 async def audio_response(
     websocket: WebSocket,
@@ -250,9 +268,10 @@ async def audio_response(
     db: AsyncSession = Depends(get_db_async),
 ):
     await websocket.accept()
+    await log_event(db, session_id, "started_session")
 
     vad = SileroVad()
-    responder = ResponseAgent()
+    responder = ResponseAgent(session_id)
     recorder = WavAppender(wav_file_path=f"{session_id}.wav")
 
     audio_data = []
@@ -270,6 +289,7 @@ async def audio_response(
 
             # NOTE(zach): Client records at 16khz sample rate.
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
+            await log_event(db, session_id, "received_audio")
 
             audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
             audio_data.append(audio_16k_np)
@@ -285,31 +305,21 @@ async def audio_response(
                 if vad_result:
                     if "end" in vad_result:
                         print("end of speech detected.")
-                        chat_record = DBChatRecord(
-                            session_id=session_id,
-                            event_name="detected_end_of_speech"
-                        )
-                        db.add(chat_record)
-                        await db.commit()
+                        
+                        await log_event(db, session_id, "detected_end_of_speech")
                         if response_task is None or response_task.done():
                             response_task = asyncio.create_task(
                                 responder.start_response(
                                     websocket,
                                     db,
                                     np.concatenate(audio_data),
-                                    session_id,
                                 )
                             )
                         else:
                             print("already responding")
                     if "start" in vad_result:
                         print("start of speech detected.")
-                        chat_record = DBChatRecord(
-                            session_id=session_id,
-                            event_name="detected_start_of_speech"
-                        )
-                        db.add(chat_record)
-                        await db.commit()
+                        await log_event(db, session_id, "detected_start_of_speech")
                         if response_task and not response_task.done():
                             responder.interrupt(response_task)
                 i = upper
@@ -327,3 +337,4 @@ async def audio_response(
     # TODO(zach): We never actually close it right now, we wait for the client
     # to close. But we should close it based on some timeout.
     await websocket.close()
+    await log_event(db, session_id, "ended_session")
