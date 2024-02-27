@@ -1,10 +1,7 @@
 from datetime import datetime
-from uuid import uuid4
 from openduck_py.db import Base
 
 from sqlalchemy import (
-    BigInteger,
-    Boolean,
     Column,
     DateTime,
     ForeignKey,
