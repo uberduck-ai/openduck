@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 from time import time
 from typing import Optional
 import wave
+import requests 
 
 # NOTE(zach): On Mac OS, the first import fails, but the subsequent one
 # succeeds. /shrug.
@@ -27,12 +28,23 @@ from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.prompts import prompt
 from openduck_py.voices import styletts2
 from openduck_py.routers.templates import generate
+from openduck_py.utils.speaker_identification import segment_audio, load_pipelines
+
+pipeline, inference = load_pipelines()
+
+with open("aec-cartoon-degraded.wav", "wb") as f:
+    f.write(
+        requests.get(
+            "https://s3.us-west-2.amazonaws.com/quack.uberduck.ai/aec-cartoon-degraded.wav"
+        ).content
+    )
+
+speaker_embedding = inference("aec-cartoon-degraded.wav")
 
 asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
     model_name="nvidia/stt_en_fastconformer_ctc_large"
 )
 normalizer = Normalizer(input_case="cased", lang="en")
-
 audio_router = APIRouter(prefix="/audio")
 
 
@@ -133,6 +145,14 @@ class ResponseAgent:
 
         loop = asyncio.get_running_loop()
 
+        audio_data = segment_audio(
+            audio_data=audio_data,
+            sample_rate=16000,
+            speaker_embedding=speaker_embedding,
+            pipeline=pipeline,
+            inference=inference,
+        )
+        
         t0 = time()
 
         print("RUNNING TRANSCRIBE IN EXECUTOR")
@@ -160,7 +180,6 @@ class ResponseAgent:
                 session_id=session_id, history_json={"messages": [system_prompt]}
             )
             db.add(chat)
-
         messages = chat.history_json["messages"]
         messages.append(new_message)
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
@@ -186,6 +205,7 @@ class ResponseAgent:
             return normalized_text
 
         normalized = normalize_text(response_message.content)
+        t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             print("RUNNING TTS IN EXECUTOR")
@@ -198,7 +218,8 @@ class ResponseAgent:
 
         print("Fastconformer", t_whisper - t0)
         print("GPT", t_gpt - t_whisper)
-        print("StyleTTS2", t_styletts - t_gpt)
+        print("Normalizer", t_normalize - t_gpt)
+        print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:

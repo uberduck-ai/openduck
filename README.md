@@ -12,7 +12,7 @@ Our kids should grow up in a household full of hackable droids they can play wit
 
 1. Copy the `.env.example` to `.env` and fill in real values.
 
-2. Download server-side models and put them inside of `uberduck-py/models` (**TODO: share models**.)
+2. Download server-side models and put them inside of `openduck-py/models` (**TODO: share models**.)
 
 ### Install Dependencies
 
@@ -24,7 +24,10 @@ Our kids should grow up in a household full of hackable droids they can play wit
 
 ### Without Docker
 
-`uvicorn openduck_py.routers.main:app --reload --env-file .env`
+```
+cd openduck-py
+uvicorn openduck_py.routers.main:app --reload --env-file ../.env
+```
 
 ### With Docker
 
