@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 from time import time
 from typing import Optional
 import wave
-import requests 
+import requests
 
 # NOTE(zach): On Mac OS, the first import fails, but the subsequent one
 # succeeds. /shrug.
@@ -16,7 +16,7 @@ except OSError:
 
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from nemo_text_processing.text_normalization.normalize import Normalizer
+
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
@@ -27,8 +27,21 @@ from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.prompts import prompt
 from openduck_py.voices import styletts2
+from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE
 from openduck_py.routers.templates import generate
-from openduck_py.utils.speaker_identification import segment_audio, load_pipelines
+from openduck_py.utils.speaker_identification import (
+    segment_audio,
+    load_pipelines,
+)
+
+if IS_DEV:
+    normalize_text = lambda x: x
+else:
+    from nemo_text_processing.text_normalization.normalize import Normalizer
+
+    normalizer = Normalizer(input_case="cased", lang="en")
+    normalize_text = normalizer.normalize
+
 
 pipeline, inference = load_pipelines()
 
@@ -44,13 +57,13 @@ speaker_embedding = inference("aec-cartoon-degraded.wav")
 asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
     model_name="nvidia/stt_en_fastconformer_ctc_large"
 )
-normalizer = Normalizer(input_case="cased", lang="en")
+
 audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
     with NamedTemporaryFile(suffix=".wav", mode="wb+") as temp_file:
-        wavfile.write(temp_file.name, 16000, audio_data)
+        wavfile.write(temp_file.name, WS_SAMPLE_RATE, audio_data)
         temp_file.flush()
         temp_file.seek(0)
         transcription = asr_model.transcribe([temp_file.name])[0]
@@ -78,7 +91,7 @@ class WavAppender:
         if not self.params_set:
             self.file.setnchannels(1)  # Mono
             self.file.setsampwidth(2)  # 16 bits
-            self.file.setframerate(16000)  # 16kHz
+            self.file.setframerate(WS_SAMPLE_RATE)
             self.params_set = True
         self.file.writeframes(audio_data.tobytes())
 
@@ -147,12 +160,11 @@ class ResponseAgent:
 
         audio_data = segment_audio(
             audio_data=audio_data,
-            sample_rate=16000,
+            sample_rate=WS_SAMPLE_RATE,
             speaker_embedding=speaker_embedding,
             pipeline=pipeline,
             inference=inference,
         )
-        
         t0 = time()
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
@@ -197,12 +209,6 @@ class ResponseAgent:
         )
         chat.history_json["messages"] = messages
         await db.commit()
-
-        def normalize_text(text):
-            normalized_text = normalizer.normalize(text)
-            print("Original response:", text)
-            print("Normalized response:", normalized_text)
-            return normalized_text
 
         normalized = normalize_text(response_message.content)
         t_normalize = time()
