@@ -30,7 +30,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          aws-region: ${{ vars.AWS_REGION }}
       - name: Start EC2 runner
         id: start-ec2-runner
         uses: machulav/ec2-github-runner@v2
@@ -85,7 +85,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -145,7 +145,7 @@ jobs:
         shell: bash
     env:
       environment: production
-      aws_region: us-west-2
+      aws_region: ${{ vars.AWS_REGION }}
     steps:
       - name: AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -166,6 +166,8 @@ jobs:
       - production-build-openduck
       - production-deploy-openduck
     runs-on: ubuntu-latest
+    environment:
+      name: production
     if: |
       always() &&
       !contains(needs.*.result, 'skipped')
@@ -175,7 +177,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          aws-region: ${{ vars.AWS_REGION }}
       - name: Terminate openduck runner
         uses: machulav/ec2-github-runner@v2
         with:
