@@ -21,13 +21,12 @@ import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
-from torchaudio.functional import resample
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.prompts import prompt
-from openduck_py.voices import styletts2
+from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE
 from openduck_py.routers.templates import generate
 from openduck_py.utils.speaker_identification import (
@@ -156,7 +155,7 @@ class ResponseAgent:
         self.is_responding = True
 
         def _inference(sentence: str):
-            audio_chunk = styletts2.styletts2_inference(text=sentence)
+            audio_chunk = styletts2_inference(text=sentence)
             
             audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
             return audio_chunk_bytes
@@ -264,7 +263,11 @@ async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: O
             counter += 1
             path = f"{base_path}_{counter}.wav"
 
-        wavfile.write(path, 16000, audio) 
+        sample_rate = WS_SAMPLE_RATE
+        if event == "generated_tts":
+            sample_rate = STYLETTS2_SAMPLE_RATE
+
+        wavfile.write(path, sample_rate, audio) 
         print(f"Wrote wavfile to {path}")
         meta = {"audio_url": path}
     record = DBChatRecord(
@@ -342,14 +345,6 @@ async def audio_response(
                 i = upper
     finally:
         recorder.close_file()
-
-    # NOTE(zach): Consider adding a flag to do this rather than leaving it
-    # commented, so we can save audio recorded on the server to make sure it
-    # sounds right.
-    # from scipy.io.wavfile import write
-    # output_filename = "user_audio_response.wav"
-    # sample_rate = 24000  # Assuming the sample rate is 16000
-    # write(output_filename, sample_rate, audio_data)
 
     # TODO(zach): We never actually close it right now, we wait for the client
     # to close. But we should close it based on some timeout.
