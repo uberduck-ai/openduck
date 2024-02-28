@@ -1,9 +1,10 @@
-name: staging
+name: deploy
 
 on:
   pull_request:
     types: [opened, closed, reopened, synchronize]
     branches:
+      - production
       - staging
 
 jobs:
@@ -20,7 +21,7 @@ jobs:
         github.event.pull_request.merged == true
       )
     environment:
-      name: staging
+      name: ${{ github.event.pull_request.base.ref }}
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
@@ -47,7 +48,7 @@ jobs:
               {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
             ]
 
-  staging-build-openduck:
+  build-openduck:
     name: Build openduck image
     runs-on: ${{ needs.start-runner-openduck.outputs.label }}
     needs: start-runner-openduck
@@ -61,7 +62,7 @@ jobs:
         github.event.pull_request.merged == true
       )
     environment:
-      name: staging
+      name: ${{ github.event.pull_request.base.ref }}
     permissions:
       id-token: write
       contents: read
@@ -69,7 +70,7 @@ jobs:
       run:
         shell: bash
     env:
-      environment: staging
+      environment: ${{ github.event.pull_request.base.ref }}
 
     steps:
       - name: Checkout Repository
@@ -115,12 +116,12 @@ jobs:
       dockerRegistry: ${{ steps.login-ecr.outputs.registry }}
       imageTag: ${{ steps.tagImage.outputs.imageTag }}
 
-  staging-deploy-openduck:
+  deploy-openduck:
     name: Deploy openduck
     runs-on: ${{ needs.start-runner-openduck.outputs.label }}
     needs: 
       - start-runner-openduck
-      - staging-build-openduck
+      - build-openduck
     if: |
       contains(join(needs.*.result, ','), 'success') &&
       (
@@ -132,7 +133,7 @@ jobs:
         github.event.pull_request.merged == true
       )
     environment:
-      name: staging
+      name: ${{ github.event.pull_request.base.ref }}
     permissions:
       id-token: write
       contents: read
@@ -140,7 +141,7 @@ jobs:
       run:
         shell: bash
     env:
-      environment: staging
+      environment: ${{ github.event.pull_request.base.ref }}
       aws_region: ${{ vars.AWS_REGION }}
     steps:
       - name: AWS credentials
@@ -152,21 +153,21 @@ jobs:
       - name: Update api-openduck deployment
         uses: ianbelcher/eks-kubectl-action@master
         with:
-          cluster_name: staging-uberduck
-          args: set image --namespace default --record deployment/api-openduck api=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.staging-build-openduck.outputs.imageTag }}
+          cluster_name: ${{ env.environment }}-uberduck
+          args: set image --namespace default --record deployment/api-openduck api=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.build-openduck.outputs.imageTag }}
 
   stop-runner-openduck:
     name: Terminate openduck runner
     needs:
       - start-runner-openduck
-      - staging-build-openduck
-      - staging-deploy-openduck
+      - build-openduck
+      - deploy-openduck
     runs-on: ubuntu-latest
-    environment:
-      name: staging
     if: |
       always() &&
       !contains(needs.*.result, 'skipped')
+    environment:
+      name: ${{ github.event.pull_request.base.ref }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
