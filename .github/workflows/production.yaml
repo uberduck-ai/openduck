@@ -26,7 +26,7 @@ jobs:
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
@@ -81,7 +81,7 @@ jobs:
           buildkitd-flags: --debug
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
@@ -95,10 +95,6 @@ jobs:
         id: tagImage
         run: |
           echo "imageTag=${GITHUB_REF##*/}-$(git rev-parse --short=7 HEAD)-$(date +%s)" >> $GITHUB_OUTPUT
-
-      - name: Build Python libraries
-        run: |
-          ./build_py
 
       - name: Build, Tag & Push ${{ env.environment }}-openduck image to ECR
         uses: docker/build-push-action@v5
@@ -148,7 +144,7 @@ jobs:
       aws_region: us-west-2
     steps:
       - name: AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
@@ -171,7 +167,7 @@ jobs:
       !contains(needs.*.result, 'skipped')
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
