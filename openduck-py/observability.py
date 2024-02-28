@@ -39,7 +39,7 @@ def display_chat_interface(records, show_events: Dict[str, bool]):
 stmt = select(DBChatRecord.session_id).distinct().order_by(DBChatRecord.timestamp.desc())
 unique_session_ids = db.execute(stmt).all()
 session_id_options = [session_id[0] for session_id in unique_session_ids]
-session_id_input = st.selectbox("Select Session ID to display records:", session_id_options)
+session_id_input = st.sidebar.selectbox("Select Session ID to display records:", session_id_options)
 
 unique_event_names = db.execute(select(DBChatRecord.event_name).distinct()).all()
 event_name_options = [event_name[0] for event_name in unique_event_names]
