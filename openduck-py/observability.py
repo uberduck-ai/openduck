@@ -27,7 +27,9 @@ def display_chat_interface(records):
 
 
 
-session_id_input = st.text_input("Enter Session ID to display records:", "")
+unique_session_ids = db.query(DBChatRecord.session_id).distinct().all()
+session_id_options = [session_id[0] for session_id in unique_session_ids]  # Unpack the tuples
+session_id_input = st.selectbox("Select Session ID to display records:", session_id_options)
 if session_id_input:
     records = get_chat_records(session_id_input)
     display_chat_interface(records)
