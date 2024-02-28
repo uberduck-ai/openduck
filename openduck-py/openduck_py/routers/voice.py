@@ -153,7 +153,7 @@ class ResponseAgent:
         audio_data: np.ndarray,
     ):
         print("starting response")
-        await log_event(db, self.session_id, "started_response")
+        await log_event(db, self.session_id, "started_response", audio=audio_data)
         self.is_responding = True
 
         def _inference(sentence: str):
@@ -306,9 +306,6 @@ async def audio_response(
 
             # NOTE(zach): Client records at 16khz sample rate.
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
-
-            await log_event(db, session_id, "received_audio", audio=audio_16k_np)
-
             audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
             audio_data.append(audio_16k_np)
             if record:
