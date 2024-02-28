@@ -139,12 +139,10 @@ class ResponseAgent:
         self.session_id = session_id
 
     def interrupt(self, task: asyncio.Task):
-        if self.is_responding:
-            print("interrupting!")
-            task.cancel()
-            self.is_responding = False
-        else:
-            print("not responding, no need to interrupt.")
+        assert self.is_responding
+        print("interrupting!")
+        task.cancel()
+        self.is_responding = False
 
     async def start_response(
         self,
@@ -336,7 +334,9 @@ async def audio_response(
                         print("start of speech detected.")
                         await log_event(db, session_id, "detected_start_of_speech")
                         if response_task and not response_task.done():
-                            responder.interrupt(response_task)
+                            if responder.is_responding:
+                                await log_event(db, session_id, "interrupted_response")
+                                responder.interrupt(response_task)
                 i = upper
     finally:
         recorder.close_file()
