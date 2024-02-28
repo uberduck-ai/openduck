@@ -169,6 +169,9 @@ class ResponseAgent:
             pipeline=pipeline,
             inference=inference,
         )
+        if len(audio_data) < 100:
+            print(f"Audio data too short: {len(audio_data)} samples")
+            return
         t0 = time()
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
