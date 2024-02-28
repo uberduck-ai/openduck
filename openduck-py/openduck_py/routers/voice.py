@@ -139,12 +139,10 @@ class ResponseAgent:
         self.session_id = session_id
 
     def interrupt(self, task: asyncio.Task):
-        if self.is_responding:
-            print("interrupting!")
-            task.cancel()
-            self.is_responding = False
-        else:
-            print("not responding, no need to interrupt.")
+        assert self.is_responding
+        print("interrupting!")
+        task.cancel()
+        self.is_responding = False
 
     async def start_response(
         self,
@@ -153,7 +151,7 @@ class ResponseAgent:
         audio_data: np.ndarray,
     ):
         print("starting response")
-        await log_event(db, self.session_id, "started_response")
+        await log_event(db, self.session_id, "started_response", audio=audio_data)
         self.is_responding = True
 
         def _inference(sentence: str):
@@ -175,7 +173,7 @@ class ResponseAgent:
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
-        await log_event(db, self.session_id, "transcribed_audio", meta={"transcript": transcription})
+        await log_event(db, self.session_id, "transcribed_audio", meta={"text": transcription})
 
         if not transcription:
             return
@@ -203,7 +201,7 @@ class ResponseAgent:
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
         response_message = response.choices[0].message
         completion = response_message.content
-        await log_event(db, self.session_id, "generated_completion", meta={"completion": completion})
+        await log_event(db, self.session_id, "generated_completion", meta={"text": completion})
 
         t_gpt = time()
 
@@ -220,7 +218,7 @@ class ResponseAgent:
         await db.commit()
 
         normalized = normalize_text(response_message.content)
-        await log_event(db, self.session_id, "normalized_text", meta={"normalized_text": normalized})
+        await log_event(db, self.session_id, "normalized_text", meta={"text": normalized})
         t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
@@ -306,9 +304,6 @@ async def audio_response(
 
             # NOTE(zach): Client records at 16khz sample rate.
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
-
-            await log_event(db, session_id, "received_audio", audio=audio_16k_np)
-
             audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
             audio_data.append(audio_16k_np)
             if record:
@@ -339,7 +334,9 @@ async def audio_response(
                         print("start of speech detected.")
                         await log_event(db, session_id, "detected_start_of_speech")
                         if response_task and not response_task.done():
-                            responder.interrupt(response_task)
+                            if responder.is_responding:
+                                await log_event(db, session_id, "interrupted_response")
+                                responder.interrupt(response_task)
                 i = upper
     finally:
         recorder.close_file()
