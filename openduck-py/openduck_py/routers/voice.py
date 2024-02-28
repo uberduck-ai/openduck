@@ -255,17 +255,19 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
 
 async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: Optional[Dict[str, str]] = None, audio: Optional[np.ndarray] = None):
     if audio is not None:
-        path = Path(__file__).resolve().parents[2] / f"logs/{session_id}/{event}_{time()}.wav"
-        session_folder = path.parent
+        log_path = f"logs/{session_id}/{event}_{time()}.wav"
+        abs_path = Path(__file__).resolve().parents[2] / log_path
+        session_folder = abs_path.parent
         if not os.path.exists(session_folder):
             os.makedirs(session_folder)
 
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
             sample_rate = STYLETTS2_SAMPLE_RATE
-        wavfile.write(path, sample_rate, audio) 
-        print(f"Wrote wavfile to {path}")
-        meta = {"audio_url": str(path)}
+        wavfile.write(abs_path, sample_rate, audio) 
+        print(f"Wrote wavfile to {abs_path}")
+
+        meta = {"audio_url": log_path}
     record = DBChatRecord(
         session_id=session_id,
         event_name=event,
