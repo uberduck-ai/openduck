@@ -32,7 +32,7 @@ def display_chat_interface(records):
 
 stmt = select(DBChatRecord.session_id).distinct().order_by(DBChatRecord.timestamp.desc())
 unique_session_ids = db.execute(stmt).all()
-session_id_options = [session_id[0] for session_id in unique_session_ids]  # Unpack the tuples
+session_id_options = [session_id[0] for session_id in unique_session_ids]
 session_id_input = st.selectbox("Select Session ID to display records:", session_id_options)
 if session_id_input:
     records = get_chat_records(session_id_input)
