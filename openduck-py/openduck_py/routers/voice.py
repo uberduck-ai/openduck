@@ -170,7 +170,7 @@ class ResponseAgent:
             inference=inference,
         )
         if len(audio_data) < 100:
-            print(f"Audio data too short: {len(audio_data)} samples")
+            print(f"All audio has been filtered out. Not responding.")
             return
         t0 = time()
 
