@@ -175,7 +175,7 @@ class ResponseAgent:
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
-        await log_event(db, self.session_id, "transcribed_audio", meta={"transcript": transcription})
+        await log_event(db, self.session_id, "transcribed_audio", meta={"text": transcription})
 
         if not transcription:
             return
@@ -203,7 +203,7 @@ class ResponseAgent:
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
         response_message = response.choices[0].message
         completion = response_message.content
-        await log_event(db, self.session_id, "generated_completion", meta={"completion": completion})
+        await log_event(db, self.session_id, "generated_completion", meta={"text": completion})
 
         t_gpt = time()
 
@@ -220,7 +220,7 @@ class ResponseAgent:
         await db.commit()
 
         normalized = normalize_text(response_message.content)
-        await log_event(db, self.session_id, "normalized_text", meta={"normalized_text": normalized})
+        await log_event(db, self.session_id, "normalized_text", meta={"text": normalized})
         t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
