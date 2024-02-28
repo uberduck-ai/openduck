@@ -237,8 +237,6 @@ ref_s = _compute_style(model, "models/cartoon-boy-upbeat.wav")
 
 
 def styletts2_inference(text: str, language: str = "english"):
-    print("styletts2.run started")
-
     # NOTE (Sam): to deal with short inference issue https://github.com/yl4579/StyleTTS2/issues/46.
     warm_start_required = (
         len(text) < 40 and language == "english"

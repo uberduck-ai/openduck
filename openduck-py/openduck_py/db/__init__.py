@@ -45,9 +45,9 @@ Base = declarative_base(cls=UberBase)
 configure_mappers()
 
 echo = True
-engine = create_engine(connection_string, echo=echo)
+engine = create_engine(connection_string)
 Session = sessionmaker(bind=engine)
-async_engine = create_async_engine(async_connection_string, echo=echo)
+async_engine = create_async_engine(async_connection_string)
 SessionAsync = sessionmaker(
     bind=async_engine,
     expire_on_commit=False,

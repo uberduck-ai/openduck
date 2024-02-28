@@ -8,8 +8,7 @@ from scipy.spatial.distance import cdist
 from pyannote.core import Segment
 from pyannote.audio import Pipeline, Inference, Model
 
-
-HF_AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN")
+from openduck_py.settings import HF_AUTH_TOKEN, EMB_MATCH_THRESHOLD, WS_SAMPLE_RATE
 
 
 def load_pipelines() -> tuple:
@@ -29,6 +28,7 @@ def load_pipelines() -> tuple:
     inference.to(torch.device("cuda"))
 
     return pipeline, inference
+
 
 def identify_speakers(
     audio_data: torch.Tensor,
@@ -54,26 +54,20 @@ def identify_speakers(
     start = time.time()
     pyannote_input = {"waveform": audio_data, "sample_rate": sample_rate}
     output = pipeline(pyannote_input)
-    print(f"[SEGMENTATION] Speaker diarization took {time.time() - start:.3f} seconds")
 
-    audio_length_seconds = (
-        audio_data.shape[1] / sample_rate
-    ) 
+    audio_length_seconds = audio_data.shape[1] / sample_rate
 
     for segment, _, speaker in output.itertracks(yield_label=True):
         segment_end = min(segment.end, audio_length_seconds)
         if segment.start >= segment_end or segment.end - segment.start < 0.3:
-            continue  
+            continue
 
         start = time.time()
         adjusted_segment = Segment(segment.start, segment_end)
 
         segment_embedding = inference.crop(pyannote_input, adjusted_segment)
-        print(f"[SEGMENTATION] Embedding inference took {time.time() - start:.3f} seconds")
 
-        distance = cdist([segment_embedding], [speaker_embedding], metric="cosine")[
-            0, 0
-        ]
+        distance = get_embedding_distance(segment_embedding, speaker_embedding)
         if speaker not in speaker_segments:
             speaker_segments[speaker] = {"times": [], "distances": []}
         speaker_segments[speaker]["times"].append((segment.start, segment_end))
@@ -99,7 +93,6 @@ def filter_voices(d: dict, threshold: float = 0.5):
     return new_d
 
 
-
 def segment_audio(
     audio_data: np.array,
     sample_rate: int,
@@ -117,7 +110,6 @@ def segment_audio(
         pipeline=pipeline,
         inference=inference,
     )
-    print(f"[SEGMENTATION] Speaker identification took {time.time() - start:.3f} seconds")
 
     start = time.time()
     speaker_segments = filter_voices(speaker_segments)
@@ -132,5 +124,12 @@ def segment_audio(
             segment = audio_data[int(start * sample_rate) : int(end * sample_rate)]
             concatenated_audio_data = np.concatenate((concatenated_audio_data, segment))
 
-    print(f"[SEGMENTATION] Audio concatenation took {time.time() - start_time:.3f} seconds")
     return concatenated_audio_data
+
+
+def get_embedding_distance(embedding_1: np.array, embedding_2: np.array) -> float:
+    return cdist([embedding_1], [embedding_2], metric="cosine")[0, 0]
+
+
+def is_embedding_match(embedding_1: np.array, embedding_2: np.array) -> bool:
+    return get_embedding_distance(embedding_1, embedding_2) < EMB_MATCH_THRESHOLD
