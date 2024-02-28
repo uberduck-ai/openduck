@@ -19,7 +19,7 @@ def get_chat_records(session_id):
 def display_chat_interface(records):
     for record in records:
         role = "user"
-        if record.event_name in ["generated_completion", "generated_tts", "transcribed_audio", "normalized_text"]:
+        if record.event_name in ["generated_completion", "generated_tts", "normalized_text"]:
             role = "assistant"
         meta_json = record.meta_json or {}
         with st.chat_message(role):
