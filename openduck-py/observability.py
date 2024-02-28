@@ -12,19 +12,22 @@ Session = sessionmaker(bind=engine)
 db = Session()
 
 def get_chat_records(session_id):
-    stmt = select(DBChatRecord).where(DBChatRecord.session_id == session_id)
+    stmt = select(DBChatRecord).where(DBChatRecord.session_id == session_id).order_by(DBChatRecord.timestamp)
     records = db.execute(stmt).scalars().all()
     return records
 
 def display_chat_interface(records):
     for record in records:
+        role = "user"
+        if record.event_name in ["generated_completion", "generated_tts", "transcribed_audio", "normalized_text"]:
+            role = "assistant"
         meta_json = record.meta_json or {}
-        st.text(f"{record.event_name} {record.timestamp}")
-        if "audio_url" in meta_json:
-            st.audio(meta_json.get("audio_url"), format="audio/wav", start_time=0)
-        elif "text" in meta_json:
-            st.text(meta_json.get("text"))
-
+        with st.chat_message(role):
+            st.text(f"{record.event_name} {record.timestamp}")
+            if "audio_url" in meta_json:
+                st.audio(meta_json.get("audio_url"), format="audio/wav", start_time=0)
+            elif "text" in meta_json:
+                st.markdown(meta_json.get("text"))
 
 
 stmt = select(DBChatRecord.session_id).distinct().order_by(DBChatRecord.timestamp.desc())
