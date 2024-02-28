@@ -6,6 +6,8 @@ from time import time
 from typing import Optional, Dict
 import wave
 import requests
+from pathlib import Path
+import glob
 
 # NOTE(zach): On Mac OS, the first import fails, but the subsequent one
 # succeeds. /shrug.
@@ -253,23 +255,17 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
 
 async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: Optional[Dict[str, str]] = None, audio: Optional[np.ndarray] = None):
     if audio is not None:
-        counter = 0
-        path = f"/openduck-py/openduck-py/logs/{session_id}/{event}_{counter}.wav"
-        session_folder = os.path.dirname(path)
+        path = Path(__file__).resolve().parents[2] / f"logs/{session_id}/{event}_{time()}.wav"
+        session_folder = path.parent
         if not os.path.exists(session_folder):
             os.makedirs(session_folder)
-        base_path = path.rsplit("_", 1)[0]
-        while os.path.exists(path):
-            counter += 1
-            path = f"{base_path}_{counter}.wav"
 
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
             sample_rate = STYLETTS2_SAMPLE_RATE
-
         wavfile.write(path, sample_rate, audio) 
         print(f"Wrote wavfile to {path}")
-        meta = {"audio_url": path}
+        meta = {"audio_url": str(path)}
     record = DBChatRecord(
         session_id=session_id,
         event_name=event,
