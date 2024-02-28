@@ -1,0 +1,185 @@
+name: production
+
+on:
+  pull_request:
+    types: [opened, closed, reopened, synchronize]
+    branches:
+      - production
+
+jobs:
+  start-runner-openduck:
+    name: Init openduck runner
+    runs-on: ubuntu-latest
+    if: |
+      (
+        github.event_name == 'pull_request' ||
+        github.event_name == 'pull_request_target'
+      ) &&
+      (
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true
+      )
+    environment:
+      name: production
+    outputs:
+      label: ${{ steps.start-ec2-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+      - name: Start EC2 runner
+        id: start-ec2-runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ${{ secrets.AWS_EC2_AMI }}
+          ec2-instance-type: ${{ vars.AWS_EC2_TYPE }}
+          subnet-id: ${{ secrets.AWS_VPC_SUBNET }}
+          security-group-id: ${{ secrets.AWS_VPC_SG }}
+          aws-resource-tags: >
+            [
+              {"Key": "Name", "Value": "uberduck-github-runner-openduck"},
+              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
+            ]
+
+  production-build-openduck:
+    name: Build openduck image
+    runs-on: ${{ needs.start-runner-openduck.outputs.label }}
+    needs: start-runner-openduck
+    if: |
+      (
+        github.event_name == 'pull_request' ||
+        github.event_name == 'pull_request_target'
+      ) &&
+      (
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true
+      )
+    environment:
+      name: production
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      environment: production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setting Up Directory Structures as ENV Vars
+        id: tagImage
+        run: |
+          echo "imageTag=${GITHUB_REF##*/}-$(git rev-parse --short=7 HEAD)-$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Build Python libraries
+        run: |
+          ./build_py
+
+      - name: Build, Tag & Push ${{ env.environment }}-openduck image to ECR
+        uses: docker/build-push-action@v5
+        env:
+          ecrRegistry: ${{ steps.login-ecr.outputs.registry }}
+          imageTag: ${{ steps.tagImage.outputs.imageTag }}
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ env.ecrRegistry }}/${{ env.environment }}-openduck:${{ env.imageTag }}
+            ${{ env.ecrRegistry }}/${{ env.environment }}-openduck:latest
+          # Experimental https://docs.docker.com/build/ci/github-actions/cache/#github-cache
+          cache-from: type=registry,ref=${{ env.ecrRegistry }}/${{ env.environment }}-openduck:latest
+          cache-to: type=inline
+    outputs:
+      dockerRegistry: ${{ steps.login-ecr.outputs.registry }}
+      imageTag: ${{ steps.tagImage.outputs.imageTag }}
+
+  production-deploy-openduck:
+    name: Deploy openduck
+    runs-on: ${{ needs.start-runner-openduck.outputs.label }}
+    needs: 
+      - start-runner-openduck
+      - production-build-openduck
+    if: |
+      contains(join(needs.*.result, ','), 'success') &&
+      (
+        github.event_name == 'pull_request' ||
+        github.event_name == 'pull_request_target'
+      ) &&
+      (
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true
+      )
+    environment:
+      name: production
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      environment: production
+      aws_region: us-west-2
+    steps:
+      - name: AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.aws_region }}
+      - name: Update api-openduck deployment
+        uses: ianbelcher/eks-kubectl-action@master
+        with:
+          cluster_name: production-uberduck
+          args: set image --namespace default --record deployment/api-openduck api=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.production-build-openduck.outputs.imageTag }}
+
+  stop-runner-openduck:
+    name: Terminate openduck runner
+    needs:
+      - start-runner-openduck
+      - production-build-openduck
+      - production-deploy-openduck
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      !contains(needs.*.result, 'skipped')
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+      - name: Terminate openduck runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner-openduck.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner-openduck.outputs.ec2-instance-id }}
