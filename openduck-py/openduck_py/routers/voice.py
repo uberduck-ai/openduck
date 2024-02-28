@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 from time import time
 from typing import Optional
 import wave
-import requests 
+import requests
 
 # NOTE(zach): On Mac OS, the first import fails, but the subsequent one
 # succeeds. /shrug.
@@ -139,7 +139,10 @@ class ResponseAgent:
         self.is_responding = True
 
         def _inference(sentence: str):
+            from datetime import datetime
+
             audio_chunk = styletts2.styletts2_inference(text=sentence)
+            np.save(f"audio_output_{datetime.utcnow()}", audio_chunk)
             audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
             return audio_chunk_bytes
 
@@ -152,7 +155,7 @@ class ResponseAgent:
             pipeline=pipeline,
             inference=inference,
         )
-        
+
         t0 = time()
 
         print("RUNNING TRANSCRIBE IN EXECUTOR")
@@ -187,7 +190,9 @@ class ResponseAgent:
         t_gpt = time()
 
         response_message = response.choices[0].message
-        print(f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens")
+        print(
+            f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+        )
 
         if "$ECHO" in response_message.content:
             print("Echo detected, not sending response.")
@@ -286,8 +291,7 @@ async def audio_response(
                     if "end" in vad_result:
                         print("end of speech detected.")
                         chat_record = DBChatRecord(
-                            session_id=session_id,
-                            event_name="detected_end_of_speech"
+                            session_id=session_id, event_name="detected_end_of_speech"
                         )
                         db.add(chat_record)
                         await db.commit()
@@ -305,8 +309,7 @@ async def audio_response(
                     if "start" in vad_result:
                         print("start of speech detected.")
                         chat_record = DBChatRecord(
-                            session_id=session_id,
-                            event_name="detected_start_of_speech"
+                            session_id=session_id, event_name="detected_start_of_speech"
                         )
                         db.add(chat_record)
                         await db.commit()
