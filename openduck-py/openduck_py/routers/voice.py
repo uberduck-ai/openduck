@@ -23,6 +23,7 @@ import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
+from whisper import load_model
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -59,6 +60,9 @@ speaker_embedding = inference("aec-cartoon-degraded.wav")
 asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
     model_name="nvidia/stt_en_fastconformer_ctc_large"
 )
+
+whisper_model = load_model("tiny.en")
+
 
 audio_router = APIRouter(prefix="/audio")
 
@@ -179,6 +183,11 @@ class ResponseAgent:
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
         await log_event(db, self.session_id, "transcribed_audio", meta={"text": transcription})
+
+        # For comparison
+        whisper_transcription = whisper_model.transcribe(audio_data)["text"]
+        print("whisper_transcription", whisper_transcription)
+        await log_event(db, self.session_id, "transcribed_audio", meta={"text": "Whisper: " + whisper_transcription})
 
         if not transcription:
             return
