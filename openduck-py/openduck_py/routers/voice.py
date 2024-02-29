@@ -1,24 +1,13 @@
 import asyncio
 import os
 import re
-from tempfile import NamedTemporaryFile
 from time import time
 from typing import Optional, Dict
 import wave
 import requests
 from pathlib import Path
-import glob
-
-# NOTE(zach): On Mac OS, the first import fails, but the subsequent one
-# succeeds. /shrug.
-try:
-    import nemo.collections.asr.models as asr_models
-except OSError:
-    import nemo.collections.asr.models as asr_models
-
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
@@ -56,24 +45,13 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
     )
 
 speaker_embedding = inference("aec-cartoon-degraded.wav")
-
-asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
-    model_name="nvidia/stt_en_fastconformer_ctc_large"
-)
-
 whisper_model = load_model("tiny.en")
-
 
 audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
-    with NamedTemporaryFile(suffix=".wav", mode="wb+") as temp_file:
-        wavfile.write(temp_file.name, WS_SAMPLE_RATE, audio_data)
-        temp_file.flush()
-        temp_file.seek(0)
-        transcription = asr_model.transcribe([temp_file.name])[0]
-    return transcription
+    return whisper_model.transcribe(audio_data)["text"]
 
 
 class WavAppender:
@@ -183,18 +161,9 @@ class ResponseAgent:
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
         await log_event(db, self.session_id, "transcribed_audio", meta={"text": transcription})
-
-        t_fastconformer = time()
-
-        # For comparison
-        whisper_transcription = whisper_model.transcribe(audio_data)["text"]
-        print("whisper_transcription", whisper_transcription)
-        await log_event(db, self.session_id, "transcribed_audio", meta={"text": "Whisper: " + whisper_transcription})
-
+        t_whisper = time()
         if not transcription:
             return
-
-        t_whisper = time()
 
         system_prompt = {
             "role": "system",
@@ -244,8 +213,7 @@ class ResponseAgent:
 
         t_styletts = time()
 
-        print("Fastconformer", t_fastconformer - t0)
-        print("Whisper", t_whisper - t_fastconformer)
+        print("Whisper", t_whisper - t0)
         print("GPT", t_gpt - t_whisper)
         print("Normalizer", t_normalize - t_gpt)
         print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
