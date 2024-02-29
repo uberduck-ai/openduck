@@ -2,7 +2,7 @@
 
 ## Goals
 
-Make it easy to build interactive, open, multimodal AI software and hardware products.
+Building an open source talking plush with a voice you can talk to.
 
 Our kids should grow up in a household full of hackable droids they can play with, work on, and learn from.
 
