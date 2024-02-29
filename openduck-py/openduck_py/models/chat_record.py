@@ -24,7 +24,8 @@ EventName = Literal[
     "transcribed_audio",
     "generated_completion",
     "normalized_text",
-    "generated_tts"
+    "generated_tts",
+    "removed_echo",
 ]
 
 

@@ -169,9 +169,11 @@ class ResponseAgent:
             pipeline=pipeline,
             inference=inference,
         )
+        await log_event(db, self.session_id, "removed_echo", audio=audio_data)
         if len(audio_data) < 100:
             print(f"All audio has been filtered out. Not responding.")
             return
+
         t0 = time()
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
