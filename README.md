@@ -44,6 +44,20 @@ pip install -r requirements.txt
 python simple_bot.py --record
 ```
 
+#### Conversation Review
+This will start up streamlit on port 8501 so make sure that port is forwarded if you are runnin on ssh. 
+
+Install streamlit
+```bash
+pip install streamlit
+```
+
+Run streamlit
+```bash
+cd openduck-py
+streamlit run observability.py
+```
+
 ### Troubleshooting
 
 - The Simple Python client sometimes has strange audio playback bugs. You can try restarting your OS's audio services, e.g. `sudo pkill coreaudiod` on Mac OS.
