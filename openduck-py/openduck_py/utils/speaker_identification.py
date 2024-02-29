@@ -20,15 +20,17 @@ def load_pipelines() -> tuple:
         "pyannote/speaker-diarization-3.1",
         use_auth_token=HF_AUTH_TOKEN,
     )
-    pipeline.to(torch.device("cuda"))
 
     embedding_pipeline = Model.from_pretrained(
         "pyannote/embedding", use_auth_token=HF_AUTH_TOKEN
     )
     inference = Inference(embedding_pipeline, window="whole")
-    inference.to(torch.device("cuda"))
+    if torch.cuda.is_available():
+        pipeline.to(torch.device("cuda"))
+        inference.to(torch.device("cuda"))
 
     return pipeline, inference
+
 
 def identify_speakers(
     audio_data: torch.Tensor,
@@ -56,20 +58,20 @@ def identify_speakers(
     output = pipeline(pyannote_input)
     print(f"[SEGMENTATION] Speaker diarization took {time.time() - start:.3f} seconds")
 
-    audio_length_seconds = (
-        audio_data.shape[1] / sample_rate
-    ) 
+    audio_length_seconds = audio_data.shape[1] / sample_rate
 
     for segment, _, speaker in output.itertracks(yield_label=True):
         segment_end = min(segment.end, audio_length_seconds)
         if segment.start >= segment_end or segment.end - segment.start < 0.3:
-            continue  
+            continue
 
         start = time.time()
         adjusted_segment = Segment(segment.start, segment_end)
 
         segment_embedding = inference.crop(pyannote_input, adjusted_segment)
-        print(f"[SEGMENTATION] Embedding inference took {time.time() - start:.3f} seconds")
+        print(
+            f"[SEGMENTATION] Embedding inference took {time.time() - start:.3f} seconds"
+        )
 
         distance = cdist([segment_embedding], [speaker_embedding], metric="cosine")[
             0, 0
@@ -99,7 +101,6 @@ def filter_voices(d: dict, threshold: float = 0.5):
     return new_d
 
 
-
 def segment_audio(
     audio_data: np.array,
     sample_rate: int,
@@ -117,7 +118,9 @@ def segment_audio(
         pipeline=pipeline,
         inference=inference,
     )
-    print(f"[SEGMENTATION] Speaker identification took {time.time() - start:.3f} seconds")
+    print(
+        f"[SEGMENTATION] Speaker identification took {time.time() - start:.3f} seconds"
+    )
 
     start = time.time()
     speaker_segments = filter_voices(speaker_segments)
@@ -132,5 +135,7 @@ def segment_audio(
             segment = audio_data[int(start * sample_rate) : int(end * sample_rate)]
             concatenated_audio_data = np.concatenate((concatenated_audio_data, segment))
 
-    print(f"[SEGMENTATION] Audio concatenation took {time.time() - start_time:.3f} seconds")
+    print(
+        f"[SEGMENTATION] Audio concatenation took {time.time() - start_time:.3f} seconds"
+    )
     return concatenated_audio_data

@@ -3,9 +3,9 @@ import os
 import re
 from tempfile import NamedTemporaryFile
 from time import time
-from typing import Optional
+from typing import Optional, Literal
 import wave
-import requests 
+import requests
 
 # NOTE(zach): On Mac OS, the first import fails, but the subsequent one
 # succeeds. /shrug.
@@ -120,6 +120,10 @@ class SileroVad:
 class ResponseAgent:
     is_responding = False
 
+    def __init__(self, output_audio_format="int16", output_sample_rate=24_000):
+        self.output_audio_format = output_audio_format
+        self.output_sample_rate = output_sample_rate
+
     def interrupt(self, task: asyncio.Task):
         if self.is_responding:
             print("interrupting!")
@@ -138,26 +142,38 @@ class ResponseAgent:
         print("starting response")
         self.is_responding = True
 
-        def _inference(sentence: str):
-            audio_chunk = styletts2.styletts2_inference(text=sentence)
-            audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
+        def _inference(sentence: str, audio_format: str = "int16"):
+            audio_chunk = styletts2.styletts2_inference(
+                text=sentence,
+                output_sample_rate=self.output_sample_rate,
+            )
+            if audio_format == "int32":
+                # audio_chunk_bytes = np.int32(audio_chunk * 2147483647).tobytes()
+                # NOTE(zach): max value is 2147483647
+                audio_chunk = np.int32(audio_chunk * 2_000_000_000)
+            else:  # Default to int16
+                audio_chunk = np.int16(audio_chunk * 32767)
+            from scipy.io.wavfile import write
+
+            write("TEST_RESPONSE.wav", 16000, audio_chunk)
+            audio_chunk_bytes = audio_chunk.tobytes()
             return audio_chunk_bytes
 
         loop = asyncio.get_running_loop()
-
-        audio_data = segment_audio(
-            audio_data=audio_data,
-            sample_rate=16000,
-            speaker_embedding=speaker_embedding,
-            pipeline=pipeline,
-            inference=inference,
+        audio_data = await loop.run_in_executor(
+            None,
+            segment_audio,
+            audio_data,
+            16000,
+            speaker_embedding,
+            pipeline,
+            inference,
         )
-        
+
         t0 = time()
 
-        print("RUNNING TRANSCRIBE IN EXECUTOR")
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
-        print("transcription", transcription)
+        print("TRANSCRIPTION: ", transcription)
 
         if not transcription:
             return
@@ -209,9 +225,13 @@ class ResponseAgent:
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             print("RUNNING TTS IN EXECUTOR")
-            audio_chunk_bytes = await loop.run_in_executor(None, _inference, sentence)
+            audio_chunk_bytes = await loop.run_in_executor(
+                None, _inference, sentence, self.output_audio_format
+            )
             print("DONE RUNNING IN EXECUTOR")
-            await websocket.send_bytes(audio_chunk_bytes)
+            for i in range(0, len(audio_chunk_bytes), 8192):
+                await websocket.send_bytes(audio_chunk_bytes[i : i + 4096])
+
             print("DONE SENDING BYTES")
 
         t_styletts = time()
@@ -244,31 +264,46 @@ async def audio_response(
     websocket: WebSocket,
     session_id: str,
     record: bool = False,
+    input_audio_format: Literal["float32", "int32"] = "float32",
+    output_audio_format: Literal["int16", "int32"] = "int16",
+    output_sample_rate: int = 24_000,
     db: AsyncSession = Depends(get_db_async),
 ):
     await websocket.accept()
+    time_of_last_response = time()
 
     vad = SileroVad()
-    responder = ResponseAgent()
+    responder = ResponseAgent(
+        output_audio_format=output_audio_format, output_sample_rate=output_sample_rate
+    )
     recorder = WavAppender(wav_file_path=f"{session_id}.wav")
 
     audio_data = []
     response_task = None
     try:
         while True:
+            if time() - time_of_last_response > 30:
+                print("closing websocket due to inactivity")
+                break
             if _check_for_exceptions(response_task):
                 audio_data = []
                 response_task = None
+                time_of_last_response = time.time()
             try:
                 message = await websocket.receive_bytes()
+
             except WebSocketDisconnect:
                 print("websocket disconnected")
                 return
-            print("got a message.")
+            # print("got a message.")
 
             # NOTE(zach): Client records at 16khz sample rate.
-            audio_16k_np = np.frombuffer(message, dtype=np.float32)
-            print("audio max and min: ", audio_16k_np.max(), audio_16k_np.min())
+            if input_audio_format == "float32":
+                audio_16k_np = np.frombuffer(message, dtype=np.float32)
+            elif input_audio_format == "int32":
+                audio_16k_np = np.frombuffer(message, dtype=np.int32)
+                audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int32).max
+                audio_16k_np = audio_16k_np.astype(np.float32)
 
             audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
             audio_data.append(audio_16k_np)
