@@ -184,6 +184,8 @@ class ResponseAgent:
         print("transcription", transcription)
         await log_event(db, self.session_id, "transcribed_audio", meta={"text": transcription})
 
+        t_fastconformer = time()
+
         # For comparison
         whisper_transcription = whisper_model.transcribe(audio_data)["text"]
         print("whisper_transcription", whisper_transcription)
@@ -242,7 +244,8 @@ class ResponseAgent:
 
         t_styletts = time()
 
-        print("Fastconformer", t_whisper - t0)
+        print("Fastconformer", t_fastconformer - t0)
+        print("Whisper", t_whisper - t_fastconformer)
         print("GPT", t_gpt - t_whisper)
         print("Normalizer", t_normalize - t_gpt)
         print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
