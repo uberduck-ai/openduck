@@ -16,7 +16,7 @@ from whisper import load_model
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
-from openduck_py.db import get_db_async, AsyncSession
+from openduck_py.db import get_db_async, create_async_engine, AsyncSession, async_connection_string
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE
@@ -25,6 +25,7 @@ from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
 )
+from sqlalchemy.orm import sessionmaker
 
 if IS_DEV:
     normalize_text = lambda x: x
@@ -133,9 +134,6 @@ class ResponseAgent:
     ):
         print("starting response")
 
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from openduck_py.db import async_connection_string
-        from sqlalchemy.orm import sessionmaker
 
         async_engine = create_async_engine(async_connection_string)
         SessionAsync = sessionmaker(
