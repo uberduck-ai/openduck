@@ -345,22 +345,45 @@ async def delete_deployment(
     return StatusResponse(status="OK")
 
 
-async def generate(
-    template: Dict[str, List[Dict[str, str]]],
-    variables: Dict[str, Any],
-    model: ModelLiteral,
+async def open_ai_chat_continuation(
+    messages: List[Dict[str, str]], model: ModelLiteral
 ) -> GenerationResponse:
-    # Substitute variables for every chat in the template
-    prompt = copy.deepcopy(template["messages"])
-    for i, chat in enumerate(prompt):
-        text = chat["content"]
-        jinja_template = jinja2.Template(text)
-        prompt[i]["content"] = jinja_template.render(variables)
+
+    response = await client.chat.completions.create(
+        model=model or DEFAULT_MODEL, messages=messages, temperature=0.3
+    )
+    return response
+
+
+async def generate(
+    template: str, variables: Dict[str, str], model: ModelLiteral
+) -> GenerationResponse:
+
+    jinja_template = jinja2.Template(template)
+    prompt = [{"content": jinja_template.render(variables)}]
 
     response = await client.chat.completions.create(
         model=model or DEFAULT_MODEL, messages=prompt, temperature=0.3
     )
     return response
+
+
+# async def generate(
+#     template: Dict[str, List[Dict[str, str]]],
+#     variables: Dict[str, Any],
+#     model: ModelLiteral,
+# ) -> GenerationResponse:
+#     # Substitute variables for every chat in the template
+#     prompt = copy.deepcopy(template["messages"])
+#     for i, chat in enumerate(prompt):
+#         text = chat["content"]
+#         jinja_template = jinja2.Template(text)
+#         prompt[i]["content"] = jinja_template.render(variables)
+
+#     response = await client.chat.completions.create(
+#         model=model or DEFAULT_MODEL, messages=prompt, temperature=0.3
+#     )
+#     return response
 
 
 def check_variables(
