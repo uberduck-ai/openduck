@@ -119,14 +119,6 @@ void onMessageCallback(WebsocketsMessage message) {
     esp_err_t err = i2s_write(I2S_NUM_0, scaledAudioData.data(), scaledAudioData.size() * sizeof(int32_t), &bytesWritten, portMAX_DELAY);
 }
 
-void onMessageCallback2(WebsocketsMessage message) {
-    std::string rawData = message.rawData();
-
-    std::vector<uint8_t> audioData(rawData.begin(), rawData.end());
-    size_t bytesWritten;
-    esp_err_t err = i2s_write(I2S_NUM_0, rawData.data(), rawData.size(), &bytesWritten, portMAX_DELAY);
-}
-
 void onEventsCallback(WebsocketsEvent event, String data) {
     if(event == WebsocketsEvent::ConnectionOpened) {
         Serial.println("Connnection Opened");
