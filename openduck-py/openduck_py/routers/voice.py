@@ -23,7 +23,7 @@ from whisper import load_model
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
-from openduck_py.db import get_db_async, AsyncSession
+from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE
@@ -136,120 +136,127 @@ class ResponseAgent:
     async def start_response(
         self,
         websocket: WebSocket,
-        db: AsyncSession,
         audio_data: np.ndarray,
     ):
-        print("starting response")
-        await log_event(db, self.session_id, "started_response", audio=audio_data)
-        self.is_responding = True
+        async with SessionAsync() as db:
+            await log_event(db, self.session_id, "started_response", audio=audio_data)
+            self.is_responding = True
 
-        def _inference(sentence: str):
-            audio_chunk = styletts2_inference(
-                text=sentence,
-                output_sample_rate=self.output_sample_rate,
-            )
-            audio_chunk = np.int16(audio_chunk * 32767).tobytes()
-            return audio_chunk
+            def _inference(sentence: str):
+                audio_chunk = styletts2_inference(
+                    text=sentence,
+                    output_sample_rate=self.output_sample_rate,
+                )
+                audio_chunk = np.int16(audio_chunk * 32767).tobytes()
+                return audio_chunk
 
-        loop = asyncio.get_running_loop()
-        audio_data = await loop.run_in_executor(
-            None,
-            segment_audio,
-            audio_data,
-            16000,
-            speaker_embedding,
-            pipeline,
-            inference,
-        )
-        await log_event(db, self.session_id, "removed_echo", audio=audio_data)
-        if len(audio_data) < 100:
-            print(f"All audio has been filtered out. Not responding.")
-
-        t0 = time()
-
-        transcription = await loop.run_in_executor(None, _transcribe, audio_data)
-        print("TRANSCRIPTION: ", transcription)
-
-        if not transcription:
-            return
-
-        t0 = time()
-
-        transcription = await loop.run_in_executor(None, _transcribe, audio_data)
-        print("transcription", transcription)
-        await log_event(
-            db, self.session_id, "transcribed_audio", meta={"text": transcription}
-        )
-        t_whisper = time()
-        if not transcription:
-            return
-
-        system_prompt = {
-            "role": "system",
-            "content": prompt("system-prompt"),
-        }
-        new_message = {"role": "user", "content": transcription}
-
-        chat = (
-            await db.execute(
-                select(DBChatHistory).where(DBChatHistory.session_id == self.session_id)
-            )
-        ).scalar_one_or_none()
-        if chat is None:
-            chat = DBChatHistory(
-                session_id=self.session_id, history_json={"messages": [system_prompt]}
-            )
-            db.add(chat)
-        messages = chat.history_json["messages"]
-        messages.append(new_message)
-        response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
-        response_message = response.choices[0].message
-        completion = response_message.content
-        await log_event(
-            db, self.session_id, "generated_completion", meta={"text": completion}
-        )
-
-        t_gpt = time()
-
-        print(
-            f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
-        )
-
-        if "$ECHO" in completion:
-            print("Echo detected, not sending response.")
-            return
-
-        messages.append({"role": response_message.role, "content": completion})
-        chat.history_json["messages"] = messages
-        await db.commit()
-
-        normalized = normalize_text(response_message.content)
-        await log_event(
-            db, self.session_id, "normalized_text", meta={"text": normalized}
-        )
-        t_normalize = time()
-        sentences = re.split(r"(?<=[.!?]) +", normalized)
-        for sentence in sentences:
-            audio_chunk_bytes = await loop.run_in_executor(
+            loop = asyncio.get_running_loop()
+            audio_data = await loop.run_in_executor(
                 None,
-                _inference,
-                sentence,
+                segment_audio,
+                audio_data,
+                WS_SAMPLE_RATE,
+                speaker_embedding,
+                pipeline,
+                inference,
             )
+            await log_event(db, self.session_id, "removed_echo", audio=audio_data)
+            if len(audio_data) < 100:
+                print(f"All audio has been filtered out. Not responding.")
+
+            t0 = time()
+
+            transcription = await loop.run_in_executor(None, _transcribe, audio_data)
+            print("TRANSCRIPTION: ", transcription)
+
+            if not transcription:
+                return
+
+            t0 = time()
+
+            transcription = await loop.run_in_executor(None, _transcribe, audio_data)
+            print("transcription", transcription)
             await log_event(
-                db,
-                self.session_id,
-                "generated_tts",
-                audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+                db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
-            for i in range(0, len(audio_chunk_bytes), 1024):
-                await websocket.send_bytes(audio_chunk_bytes[i : i + 1024])
+            t_whisper = time()
+            if not transcription:
+                return
 
-        t_styletts = time()
+            system_prompt = {
+                "role": "system",
+                "content": prompt("system-prompt"),
+            }
+            new_message = {"role": "user", "content": transcription}
 
-        print("Whisper", t_whisper - t0)
-        print("GPT", t_gpt - t_whisper)
-        print("Normalizer", t_normalize - t_gpt)
-        print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
+            await log_event(db, self.session_id, "removed_echo", audio=audio_data)
+            if len(audio_data) < 100:
+                print(f"All audio has been filtered out. Not responding.")
+                return
+
+            chat = (
+                await db.execute(
+                    select(DBChatHistory).where(
+                        DBChatHistory.session_id == self.session_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if chat is None:
+                chat = DBChatHistory(
+                    session_id=self.session_id,
+                    history_json={"messages": [system_prompt]},
+                )
+                db.add(chat)
+            messages = chat.history_json["messages"]
+            messages.append(new_message)
+            response = await generate(
+                {"messages": messages}, [], "gpt-35-turbo-deployment"
+            )
+            response_message = response.choices[0].message
+            completion = response_message.content
+            await log_event(
+                db, self.session_id, "generated_completion", meta={"text": completion}
+            )
+            t_gpt = time()
+            print(
+                f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+            )
+
+            if "$ECHO" in completion:
+                print("Echo detected, not sending response.")
+                return
+
+            messages.append({"role": response_message.role, "content": completion})
+            chat.history_json["messages"] = messages
+            await db.commit()
+
+            normalized = normalize_text(response_message.content)
+            await log_event(
+                db, self.session_id, "normalized_text", meta={"text": normalized}
+            )
+            t_normalize = time()
+            sentences = re.split(r"(?<=[.!?]) +", normalized)
+            for sentence in sentences:
+                audio_chunk_bytes = await loop.run_in_executor(
+                    None,
+                    _inference,
+                    sentence,
+                )
+                await log_event(
+                    db,
+                    self.session_id,
+                    "generated_tts",
+                    audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+                )
+                for i in range(0, len(audio_chunk_bytes), 1024):
+                    await websocket.send_bytes(audio_chunk_bytes[i : i + 1024])
+
+            t_styletts = time()
+
+            print("Whisper", t_whisper - t0)
+            print("GPT", t_gpt - t_whisper)
+            print("Normalizer", t_normalize - t_gpt)
+            print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
@@ -362,7 +369,6 @@ async def audio_response(
                             response_task = asyncio.create_task(
                                 responder.start_response(
                                     websocket,
-                                    db,
                                     np.concatenate(audio_data),
                                 )
                             )
