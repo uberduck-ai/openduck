@@ -6,11 +6,9 @@ COPY ./openduck-py /openduck-py
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y uvicorn awscli espeak-ng && \
+    apt-get install -y uvicorn gunicorn awscli espeak-ng && \
     apt-get clean
 
 RUN pip install --upgrade pip
 RUN pip install Cython
 RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . /openduck-py

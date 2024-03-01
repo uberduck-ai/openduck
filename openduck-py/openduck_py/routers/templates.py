@@ -350,7 +350,6 @@ async def generate(
     variables: Dict[str, Any],
     model: ModelLiteral,
 ) -> GenerationResponse:
-    print(f"Generating completion: {template}, {variables}, {model}")
     # Substitute variables for every chat in the template
     prompt = copy.deepcopy(template["messages"])
     for i, chat in enumerate(prompt):
