@@ -7,6 +7,13 @@ import wave
 import requests
 from pathlib import Path
 
+# NOTE(zach): On Mac OS, the first import fails, but the subsequent one
+# succeeds. /shrug.
+try:
+    import nemo.collections.asr.models as asr_models
+except OSError:
+    import nemo.collections.asr.models as asr_models
+
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
 from scipy.io import wavfile
@@ -116,11 +123,10 @@ class SileroVad:
 
 class ResponseAgent:
 
-    def __init__(self, session_id: str):
-        self.is_responding = False
+    def __init__(
+        self, session_id: str, output_audio_format="int16", output_sample_rate=24_000
+    ):
         self.session_id = session_id
-
-    def __init__(self, output_audio_format="int16", output_sample_rate=24_000):
         self.output_audio_format = output_audio_format
         self.output_sample_rate = output_sample_rate
 
@@ -141,7 +147,7 @@ class ResponseAgent:
         self.is_responding = True
 
         def _inference(sentence: str, audio_format: str = "int16"):
-            audio_chunk = styletts2.styletts2_inference(
+            audio_chunk = styletts2_inference(
                 text=sentence,
                 output_sample_rate=self.output_sample_rate,
             )
@@ -244,8 +250,6 @@ class ResponseAgent:
             for i in range(0, len(audio_chunk_bytes), 1024):
                 await websocket.send_bytes(audio_chunk_bytes[i : i + 1024])
 
-            print("DONE SENDING BYTES")
-
         t_styletts = time()
 
         print("Whisper", t_whisper - t0)
@@ -309,11 +313,12 @@ async def audio_response(
 ):
     await websocket.accept()
     time_of_last_activity = time()
-    await log_event(db, session_id, "started_session")
 
     vad = SileroVad()
     responder = ResponseAgent(
-        output_audio_format=output_audio_format, output_sample_rate=output_sample_rate
+        session_id=session_id,
+        output_audio_format=output_audio_format,
+        output_sample_rate=output_sample_rate,
     )
     recorder = WavAppender(wav_file_path=f"{session_id}.wav")
 
@@ -334,8 +339,6 @@ async def audio_response(
             except WebSocketDisconnect:
                 print("websocket disconnected")
                 return
-
-            # NOTE(zach): Client records at 16khz sample rate.
             if input_audio_format == "float32":
                 audio_16k_np = np.frombuffer(message, dtype=np.float32)
             elif input_audio_format == "int32":
@@ -358,7 +361,6 @@ async def audio_response(
                     if "end" in vad_result:
                         print("end of speech detected.")
                         time_of_last_activity = time()
-
                         await log_event(db, session_id, "detected_end_of_speech")
                         if response_task is None or response_task.done():
                             response_task = asyncio.create_task(
