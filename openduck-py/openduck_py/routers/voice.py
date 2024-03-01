@@ -274,7 +274,10 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
     reset_state = False
     if response_task and response_task.done():
         try:
-            response_task.result()
+            result = response_task.result()
+            # if result["intent"] == "stop":
+            #     print("stop intent detected, resetting audio_data and response_task")
+            #     reset_state = True
         except asyncio.CancelledError:
             print("response task was cancelled")
         except Exception as e:
@@ -284,9 +287,7 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
                 "response task completed successfully. Resetting audio_data and response_task"
             )
             reset_state = True
-        if response_task.result["intent"] == "stop":
-            print("stop intent detected, resetting audio_data and response_task")
-            reset_state = True
+
         return reset_state
 
 

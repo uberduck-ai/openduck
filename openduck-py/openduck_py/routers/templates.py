@@ -356,7 +356,7 @@ async def open_ai_chat_continuation(
 
 
 async def generate(
-    template: str, variables: Dict[str, str], model: ModelLiteral
+    template: str, variables: Dict[str, Any], model: ModelLiteral
 ) -> GenerationResponse:
 
     jinja_template = jinja2.Template(template)
