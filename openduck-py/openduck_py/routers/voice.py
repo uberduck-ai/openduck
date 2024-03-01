@@ -123,11 +123,8 @@ class SileroVad:
 
 class ResponseAgent:
 
-    def __init__(
-        self, session_id: str, output_audio_format="int16", output_sample_rate=24_000
-    ):
+    def __init__(self, session_id: str, output_sample_rate=24_000):
         self.session_id = session_id
-        self.output_audio_format = output_audio_format
         self.output_sample_rate = output_sample_rate
 
     def interrupt(self, task: asyncio.Task):
@@ -146,18 +143,13 @@ class ResponseAgent:
         await log_event(db, self.session_id, "started_response", audio=audio_data)
         self.is_responding = True
 
-        def _inference(sentence: str, audio_format: str = "int16"):
+        def _inference(sentence: str):
             audio_chunk = styletts2_inference(
                 text=sentence,
                 output_sample_rate=self.output_sample_rate,
             )
-            if audio_format == "int32":
-                # NOTE(zach): max value is 2147483647
-                audio_chunk = np.int32(audio_chunk * 2_000_000_000)
-            else:  # Default to int16
-                audio_chunk = np.int16(audio_chunk * 32767)
-            audio_chunk_bytes = audio_chunk.tobytes()
-            return audio_chunk_bytes
+            audio_chunk = np.int16(audio_chunk * 32767).tobytes()
+            return audio_chunk
 
         loop = asyncio.get_running_loop()
         audio_data = await loop.run_in_executor(
@@ -239,7 +231,9 @@ class ResponseAgent:
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             audio_chunk_bytes = await loop.run_in_executor(
-                None, _inference, sentence, self.output_audio_format
+                None,
+                _inference,
+                sentence,
             )
             await log_event(
                 db,
@@ -306,8 +300,7 @@ async def audio_response(
     websocket: WebSocket,
     session_id: str,
     record: bool = False,
-    input_audio_format: Literal["float32", "int32"] = "float32",
-    output_audio_format: Literal["int16", "int32"] = "int16",
+    input_audio_format: Literal["float32", "int32", "int16"] = "float32",
     output_sample_rate: int = 24_000,
     db: AsyncSession = Depends(get_db_async),
 ):
@@ -317,7 +310,6 @@ async def audio_response(
     vad = SileroVad()
     responder = ResponseAgent(
         session_id=session_id,
-        output_audio_format=output_audio_format,
         output_sample_rate=output_sample_rate,
     )
     recorder = WavAppender(wav_file_path=f"{session_id}.wav")
@@ -344,6 +336,10 @@ async def audio_response(
             elif input_audio_format == "int32":
                 audio_16k_np = np.frombuffer(message, dtype=np.int32)
                 audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int32).max
+                audio_16k_np = audio_16k_np.astype(np.float32)
+            elif input_audio_format == "int16":
+                audio_16k_np = np.frombuffer(message, dtype=np.int16)
+                audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int16).max
                 audio_16k_np = audio_16k_np.astype(np.float32)
 
             audio_16k: torch.Tensor = torch.tensor(audio_16k_np)

@@ -51,11 +51,10 @@ const i2s_port_t i2s_num = I2S_NUM_0; // i2s port number
 
 WebsocketsClient webSocket;
 
-const int buffer_size = 1024;
-int16_t i2s_read_buff[buffer_size]; // Buffer for reading from microphone
+const int buffer_size = 512;
+int32_t i2s_read_buff_int32[512];
+int16_t i2s_read_buff[512]; // Buffer for reading from microphone
 size_t bytes_read;
-
-int data_offset = 0;
 
 unsigned long previousPing = 0;
 const long pingInterval = 5000;
@@ -101,6 +100,26 @@ void playAudioFromQueue() {
 }
 
 void onMessageCallback(WebsocketsMessage message) {
+    std::string rawData = message.rawData();
+
+    const size_t numSamples = rawData.size() / sizeof(int16_t);
+    std::vector<int32_t> scaledAudioData(numSamples);
+
+    // This initial scaling factor moves int16 range to int32
+    int32_t initialScalingFactor = 1 << 16;
+
+    for(size_t i = 0; i < numSamples; i++) {
+        int16_t sample16 = ((int16_t*)rawData.data())[i]; 
+        // Convert to int32 and apply initial scaling to use the full range of int32
+        int32_t sample32 = ((int32_t)sample16) * initialScalingFactor;
+        scaledAudioData[i] = sample32;
+    }
+
+    size_t bytesWritten;
+    esp_err_t err = i2s_write(I2S_NUM_0, scaledAudioData.data(), scaledAudioData.size() * sizeof(int32_t), &bytesWritten, portMAX_DELAY);
+}
+
+void onMessageCallback2(WebsocketsMessage message) {
     std::string rawData = message.rawData();
 
     std::vector<uint8_t> audioData(rawData.begin(), rawData.end());
@@ -208,8 +227,8 @@ void setup() {
   webSocket.connect(
     "wss://9df3b80e5aae.ngrok.app:443/audio/response?session_id=" + 
     session_id + 
-    "&record=true&input_audio_format=int32&output_audio_format=int32" + 
-    "&output_sample_rate=16000"
+    "&record=true" + 
+    "&input_audio_format=int16&output_sample_rate=16000"
   );
   webSocket.ping();
 }
@@ -225,15 +244,18 @@ void loop() {
 
   esp_err_t err = i2s_read(
       I2S_NUM_0,
-      (void *) i2s_read_buff,
-      buffer_size * sizeof(int16_t),
+      (void *) i2s_read_buff_int32,
+      512 * sizeof(int32_t),
       &bytes_read,
       portMAX_DELAY
   );
 
   if (err == ESP_OK && bytes_read > 0) {
-    data_offset += bytes_read;
-    webSocket.sendBinary((const char*)i2s_read_buff, bytes_read);
+    for (int i = 0; i < bytes_read / sizeof(int32_t); i++) {
+      // Simple right shift to convert int32 to int16, adjust this as needed
+      i2s_read_buff[i] = (int16_t)(i2s_read_buff_int32[i] >> 16);
+    }
+    webSocket.sendBinary((const char*)i2s_read_buff, bytes_read / 2);
   }
 }
 
