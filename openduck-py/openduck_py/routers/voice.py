@@ -138,7 +138,7 @@ class ResponseAgent:
 
         def _inference(sentence: str):
             audio_chunk = styletts2_inference(text=sentence)
-            
+
             audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
             return audio_chunk_bytes
 
@@ -160,7 +160,9 @@ class ResponseAgent:
 
         transcription = await loop.run_in_executor(None, _transcribe, audio_data)
         print("transcription", transcription)
-        await log_event(db, self.session_id, "transcribed_audio", meta={"text": transcription})
+        await log_event(
+            db, self.session_id, "transcribed_audio", meta={"text": transcription}
+        )
         t_whisper = time()
         if not transcription:
             return
@@ -186,29 +188,38 @@ class ResponseAgent:
         response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
         response_message = response.choices[0].message
         completion = response_message.content
-        await log_event(db, self.session_id, "generated_completion", meta={"text": completion})
+        await log_event(
+            db, self.session_id, "generated_completion", meta={"text": completion}
+        )
 
         t_gpt = time()
 
-        print(f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens")
+        print(
+            f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+        )
 
         if "$ECHO" in completion:
             print("Echo detected, not sending response.")
             return
 
-        messages.append(
-            {"role": response_message.role, "content": completion}
-        )
+        messages.append({"role": response_message.role, "content": completion})
         chat.history_json["messages"] = messages
         await db.commit()
 
         normalized = normalize_text(response_message.content)
-        await log_event(db, self.session_id, "normalized_text", meta={"text": normalized})
+        await log_event(
+            db, self.session_id, "normalized_text", meta={"text": normalized}
+        )
         t_normalize = time()
         sentences = re.split(r"(?<=[.!?]) +", normalized)
         for sentence in sentences:
             audio_chunk_bytes = await loop.run_in_executor(None, _inference, sentence)
-            await log_event(db, self.session_id, "generated_tts", audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16))
+            await log_event(
+                db,
+                self.session_id,
+                "generated_tts",
+                audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+            )
             await websocket.send_bytes(audio_chunk_bytes)
 
         t_styletts = time()
@@ -236,7 +247,13 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
         return reset_state
 
 
-async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: Optional[Dict[str, str]] = None, audio: Optional[np.ndarray] = None):
+async def log_event(
+    db: AsyncSession,
+    session_id: str,
+    event: EventName,
+    meta: Optional[Dict[str, str]] = None,
+    audio: Optional[np.ndarray] = None,
+):
     if audio is not None:
         log_path = f"logs/{session_id}/{event}_{time()}.wav"
         abs_path = Path(__file__).resolve().parents[2] / log_path
@@ -247,15 +264,11 @@ async def log_event(db: AsyncSession, session_id: str, event: EventName, meta: O
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
             sample_rate = STYLETTS2_SAMPLE_RATE
-        wavfile.write(abs_path, sample_rate, audio) 
+        wavfile.write(abs_path, sample_rate, audio)
         print(f"Wrote wavfile to {abs_path}")
 
         meta = {"audio_url": log_path}
-    record = DBChatRecord(
-        session_id=session_id,
-        event_name=event,
-        meta_json=meta
-    )
+    record = DBChatRecord(session_id=session_id, event_name=event, meta_json=meta)
     db.add(record)
     await db.commit()
 
@@ -303,7 +316,7 @@ async def audio_response(
                 if vad_result:
                     if "end" in vad_result:
                         print("end of speech detected.")
-                        
+
                         await log_event(db, session_id, "detected_end_of_speech")
                         if response_task is None or response_task.done():
                             response_task = asyncio.create_task(
