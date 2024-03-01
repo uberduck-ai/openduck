@@ -5,11 +5,11 @@ import pylru
 
 import phonemizer
 import torch
-from scipy.io.wavfile import write as write_wav
 import librosa
 import torchaudio
 from nltk.tokenize import word_tokenize
 import numpy as np
+from torchaudio.functional import resample
 
 from .api.modules.diffusion.sampler import (
     DiffusionSampler,
@@ -18,12 +18,11 @@ from .api.modules.diffusion.sampler import (
 )
 from .settings import (
     DEVICE,
-    SAMPLE_RATE,
     ESPEAK_LANGUAGES,
     LATIN_CHARACTERS,
     PUNCTUATION_CHARACTERS,
-    MODEL_BUCKET,
 )
+
 from .api import (
     inference,
     recursive_munch,
@@ -34,8 +33,10 @@ from .api.models import (
     load_f0_models,
 )
 from .api.utils.plbert.util import load_plbert
-from openduck_py.utils.s3 import download_file, upload_file
+from openduck_py.utils.s3 import download_file
 
+
+STYLETTS2_SAMPLE_RATE = 24000
 
 _to_mel = torchaudio.transforms.MelSpectrogram(
     n_mels=80, n_fft=2048, win_length=1200, hop_length=300
@@ -131,10 +132,10 @@ def _preprocess(wave):
 
 
 def _compute_style(model, path):
-    wave, sr = librosa.load(path, sr=24000)
+    wave, sr = librosa.load(path, sr=STYLETTS2_SAMPLE_RATE)
     audio, index = librosa.effects.trim(wave, top_db=30)
-    if sr != 24000:
-        audio = librosa.resample(audio, sr, 24000)
+    if sr != STYLETTS2_SAMPLE_RATE:
+        audio = librosa.resample(audio, sr, STYLETTS2_SAMPLE_RATE)
     mel_tensor = _preprocess(audio).to(DEVICE)
 
     with torch.no_grad():

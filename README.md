@@ -2,7 +2,7 @@
 
 ## Goals
 
-Make it easy to build interactive, open, multimodal AI software and hardware products.
+Building an open source talking plush with a voice you can talk to.
 
 Our kids should grow up in a household full of hackable droids they can play with, work on, and learn from.
 
@@ -42,6 +42,20 @@ cd clients/simple
 # Lighter-weight requirements
 pip install -r requirements.txt
 python simple_bot.py --record
+```
+
+#### Conversation Review
+This will start up streamlit on port 8501 so make sure that port is forwarded if you are runnin on ssh. 
+
+Install streamlit
+```bash
+pip install streamlit
+```
+
+Run streamlit
+```bash
+cd openduck-py
+streamlit run observability.py
 ```
 
 ### Troubleshooting

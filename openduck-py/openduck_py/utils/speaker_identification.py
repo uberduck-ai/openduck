@@ -8,8 +8,7 @@ from scipy.spatial.distance import cdist
 from pyannote.core import Segment
 from pyannote.audio import Pipeline, Inference, Model
 
-
-HF_AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN")
+from openduck_py.settings import HF_AUTH_TOKEN, EMB_MATCH_THRESHOLD
 
 
 def load_pipelines() -> tuple:
@@ -56,7 +55,6 @@ def identify_speakers(
     start = time.time()
     pyannote_input = {"waveform": audio_data, "sample_rate": sample_rate}
     output = pipeline(pyannote_input)
-    print(f"[SEGMENTATION] Speaker diarization took {time.time() - start:.3f} seconds")
 
     audio_length_seconds = audio_data.shape[1] / sample_rate
 
@@ -69,13 +67,8 @@ def identify_speakers(
         adjusted_segment = Segment(segment.start, segment_end)
 
         segment_embedding = inference.crop(pyannote_input, adjusted_segment)
-        print(
-            f"[SEGMENTATION] Embedding inference took {time.time() - start:.3f} seconds"
-        )
 
-        distance = cdist([segment_embedding], [speaker_embedding], metric="cosine")[
-            0, 0
-        ]
+        distance = get_embedding_distance(segment_embedding, speaker_embedding)
         if speaker not in speaker_segments:
             speaker_segments[speaker] = {"times": [], "distances": []}
         speaker_segments[speaker]["times"].append((segment.start, segment_end))
@@ -118,9 +111,6 @@ def segment_audio(
         pipeline=pipeline,
         inference=inference,
     )
-    print(
-        f"[SEGMENTATION] Speaker identification took {time.time() - start:.3f} seconds"
-    )
 
     start = time.time()
     speaker_segments = filter_voices(speaker_segments)
@@ -135,7 +125,12 @@ def segment_audio(
             segment = audio_data[int(start * sample_rate) : int(end * sample_rate)]
             concatenated_audio_data = np.concatenate((concatenated_audio_data, segment))
 
-    print(
-        f"[SEGMENTATION] Audio concatenation took {time.time() - start_time:.3f} seconds"
-    )
     return concatenated_audio_data
+
+
+def get_embedding_distance(embedding_1: np.array, embedding_2: np.array) -> float:
+    return cdist([embedding_1], [embedding_2], metric="cosine")[0, 0]
+
+
+def is_embedding_match(embedding_1: np.array, embedding_2: np.array) -> bool:
+    return get_embedding_distance(embedding_1, embedding_2) < EMB_MATCH_THRESHOLD
