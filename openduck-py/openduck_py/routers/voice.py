@@ -129,10 +129,22 @@ class ResponseAgent:
     async def start_response(
         self,
         websocket: WebSocket,
-        db: AsyncSession,
         audio_data: np.ndarray,
     ):
         print("starting response")
+
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from openduck_py.db import async_connection_string
+        from sqlalchemy.orm import sessionmaker
+
+        async_engine = create_async_engine(async_connection_string)
+        SessionAsync = sessionmaker(
+            bind=async_engine,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+        db = SessionAsync()
+
         await log_event(db, self.session_id, "started_response", audio=audio_data)
         self.is_responding = True
 
@@ -228,6 +240,7 @@ class ResponseAgent:
         print("GPT", t_gpt - t_whisper)
         print("Normalizer", t_normalize - t_gpt)
         print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
+        await db.close()
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
@@ -322,7 +335,6 @@ async def audio_response(
                             response_task = asyncio.create_task(
                                 responder.start_response(
                                     websocket,
-                                    db,
                                     np.concatenate(audio_data),
                                 )
                             )
