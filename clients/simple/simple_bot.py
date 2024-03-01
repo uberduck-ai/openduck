@@ -19,22 +19,29 @@ Instructions:
 import os
 import queue
 import asyncio
+import threading
+import wave
 import websockets
 
 import click
 import numpy as np
 import sounddevice as sd
-import soundfile as sf
+import pyaudio
 from uuid import uuid4
 
+# Audio configuration
+FORMAT = pyaudio.paInt16  # Audio format (16-bit PCM)
 SAMPLE_RATE = 16000
+OUTPUT_SAMPLE_RATE = 24000
 CHANNELS = 1
 
 UBERDUCK_API_HOST = os.environ["UBERDUCK_API_HOST"]
 
-SILENCE_THRESHOLD = 1.0
-
 session = str(uuid4())
+
+play_queue = queue.Queue()
+
+shutdown_flag = threading.Event()
 
 
 async def send_audio(websocket, audio_queue):
@@ -50,11 +57,34 @@ async def send_audio(websocket, audio_queue):
 
 async def receive_audio(websocket):
     print("We're receiving audio!")
+
     async for message in websocket:
-        data = np.frombuffer(message, dtype=np.int16)
-        sd.play(data, 24000)
-        sd.wait()
-        print("[INFO] Playing received audio.")
+        print("Received audio!")
+        # Assuming `message` is audio data. For simplicity, we're not handling the case where
+        # the message needs decoding or conversion. This will depend on how your audio data
+        # is being sent (e.g., raw bytes, encoded, etc.).
+
+        # Convert bytes to numpy array (assuming the incoming data is compatible with numpy)
+        # This step may need adjustment based on your data format.
+        audio_data = np.frombuffer(message, dtype=np.int16)
+        play_queue.put(message)
+
+
+def play_audio():
+    """Continuously checks the queue and plays audio chunks."""
+    # Initialize PyAudio
+    p = pyaudio.PyAudio()
+
+    # Open stream
+    stream = p.open(
+        format=FORMAT, channels=CHANNELS, rate=OUTPUT_SAMPLE_RATE, output=True
+    )
+    while True:
+        if shutdown_flag.is_set():
+            break
+        if not play_queue.empty():
+            data = play_queue.get()
+            stream.write(data)  # Play the audio chunk
 
 
 class AudioRecorder:
@@ -84,9 +114,26 @@ class AudioRecorder:
 
 
 def play_startup_sound():
-    startup_sound, fs = sf.read("startup.wav")
-    sd.play(startup_sound, fs)
-    sd.wait()
+    p = pyaudio.PyAudio()
+    CHUNK = 1024
+    # Open stream
+    with wave.open("startup.wav", "rb") as wf:
+        # Instantiate PyAudio and initialize PortAudio system resources (1)
+        p = pyaudio.PyAudio()
+        # Open stream (2)
+        stream = p.open(
+            format=p.get_format_from_width(wf.getsampwidth()),
+            channels=wf.getnchannels(),
+            rate=wf.getframerate(),
+            output=True,
+        )
+        # Play samples from the wave file (3)
+        while len(data := wf.readframes(CHUNK)):  # Requires Python 3.8+ for :=
+            stream.write(data)
+    # Close stream (4)
+    stream.close()
+    # Release PortAudio system resources (5)
+    p.terminate()
 
 
 class SharedState:
@@ -114,7 +161,13 @@ def main(record):
 
     recorder = AudioRecorder()
     recorder.start_recording()
-    asyncio.run(run_websocket(uri, recorder.audio_queue))
+    play_thread = threading.Thread(target=play_audio)
+    play_thread.start()
+    try:
+        asyncio.run(run_websocket(uri, recorder.audio_queue))
+    except KeyboardInterrupt:
+        shutdown_flag.set()
+        print("Shutting down.")
 
 
 if __name__ == "__main__":
