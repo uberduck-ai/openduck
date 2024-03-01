@@ -218,7 +218,6 @@ class ResponseAgent:
             print("GPT", t_gpt - t_whisper)
             print("Normalizer", t_normalize - t_gpt)
             print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
-        await db.close()
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
