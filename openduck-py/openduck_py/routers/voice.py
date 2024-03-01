@@ -229,8 +229,8 @@ class ResponseAgent:
                 None, _inference, sentence, self.output_audio_format
             )
             print("DONE RUNNING IN EXECUTOR")
-            for i in range(0, len(audio_chunk_bytes), 8192):
-                await websocket.send_bytes(audio_chunk_bytes[i : i + 4096])
+            for i in range(0, len(audio_chunk_bytes), 1024):
+                await websocket.send_bytes(audio_chunk_bytes[i : i + 1024])
 
             print("DONE SENDING BYTES")
 
@@ -270,7 +270,7 @@ async def audio_response(
     db: AsyncSession = Depends(get_db_async),
 ):
     await websocket.accept()
-    time_of_last_response = time()
+    time_of_last_activity = time()
 
     vad = SileroVad()
     responder = ResponseAgent(
@@ -282,13 +282,13 @@ async def audio_response(
     response_task = None
     try:
         while True:
-            if time() - time_of_last_response > 30:
+            if time() - time_of_last_activity > 30:
                 print("closing websocket due to inactivity")
                 break
             if _check_for_exceptions(response_task):
                 audio_data = []
                 response_task = None
-                time_of_last_response = time.time()
+                time_of_last_activity = time()
             try:
                 message = await websocket.receive_bytes()
 
@@ -319,6 +319,7 @@ async def audio_response(
                 if vad_result:
                     if "end" in vad_result:
                         print("end of speech detected.")
+                        time_of_last_activity = time()
                         if response_task is None or response_task.done():
                             response_task = asyncio.create_task(
                                 responder.start_response(
@@ -332,6 +333,7 @@ async def audio_response(
                             print("already responding")
                     if "start" in vad_result:
                         print("start of speech detected.")
+                        time_of_last_activity = time()
                         if response_task and not response_task.done():
                             responder.interrupt(response_task)
                 i = upper
