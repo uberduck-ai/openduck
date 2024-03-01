@@ -1,12 +1,13 @@
+from pathlib import Path
 from sqlalchemy import select, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import configure_mappers, declarative_base, sessionmaker
 
 
-DB_USER = "uberduck"
-
-connection_string = "sqlite:///test.db"
-async_connection_string = "sqlite+aiosqlite:///test.db"
+connection_string = f"sqlite:///{Path(__file__).parent.parent.parent}/test.db"
+async_connection_string = (
+    f"sqlite+aiosqlite:///{Path(__file__).parent.parent.parent}/test.db"
+)
 
 
 class UberBase:
@@ -44,7 +45,6 @@ class UberBase:
 Base = declarative_base(cls=UberBase)
 configure_mappers()
 
-echo = True
 engine = create_engine(connection_string)
 Session = sessionmaker(bind=engine)
 async_engine = create_async_engine(async_connection_string)
