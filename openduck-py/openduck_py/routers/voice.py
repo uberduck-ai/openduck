@@ -148,14 +148,10 @@ class ResponseAgent:
                 output_sample_rate=self.output_sample_rate,
             )
             if audio_format == "int32":
-                # audio_chunk_bytes = np.int32(audio_chunk * 2147483647).tobytes()
                 # NOTE(zach): max value is 2147483647
                 audio_chunk = np.int32(audio_chunk * 2_000_000_000)
             else:  # Default to int16
                 audio_chunk = np.int16(audio_chunk * 32767)
-            from scipy.io.wavfile import write
-
-            write("TEST_RESPONSE.wav", 16000, audio_chunk)
             audio_chunk_bytes = audio_chunk.tobytes()
             return audio_chunk_bytes
 
