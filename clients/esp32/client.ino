@@ -5,6 +5,10 @@
 #include <ArduinoWebsockets.h>
 #include <queue>
 
+#define SAMPLE_RATE 16000
+
+const String DOMAIN  = "9df3b80e5aae.ngrok.app";
+
 // Define a global queue to hold the audio data messages.
 std::queue<std::vector<uint8_t>> audioQueue;
 
@@ -119,6 +123,14 @@ void onMessageCallback(WebsocketsMessage message) {
     esp_err_t err = i2s_write(I2S_NUM_0, scaledAudioData.data(), scaledAudioData.size() * sizeof(int32_t), &bytesWritten, portMAX_DELAY);
 }
 
+void onMessageCallback2(WebsocketsMessage message) {
+    std::string rawData = message.rawData();
+
+    std::vector<uint8_t> audioData(rawData.begin(), rawData.end());
+    size_t bytesWritten;
+    esp_err_t err = i2s_write(I2S_NUM_0, rawData.data(), rawData.size(), &bytesWritten, portMAX_DELAY);
+}
+
 void onEventsCallback(WebsocketsEvent event, String data) {
     if(event == WebsocketsEvent::ConnectionOpened) {
         Serial.println("Connnection Opened");
@@ -160,7 +172,7 @@ void setup() {
 
   i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX),
-    .sample_rate = 24000, // Adjust this according to your audio file's sample rate
+    .sample_rate = SAMPLE_RATE,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT, // Adjust this too
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT, // Mono
     .communication_format = I2S_COMM_FORMAT_I2S,
@@ -183,19 +195,21 @@ void setup() {
   i2s_driver_install(i2s_num, &i2s_config, 0, NULL);
   i2s_set_pin(i2s_num, &pin_config);  
 
-  i2s_set_sample_rates(I2S_NUM_0, 22050); // Set the sample rate for your audio file.
-  const char* audioURL = "http://quack.uberduck.ai/aec-cartoon.wav";
+  // NOTE(zach): Uncomment to test playing audio from URL.
+  // i2s_set_sample_rates(I2S_NUM_0, 22050); // Set the sample rate for your audio file.
+  // const char* audioURL = "http://quack.uberduck.ai/aec-cartoon.wav";
   // playAudioFromURL(audioURL);
+  // i2s_set_sample_rates(I2S_NUM_0, SAMPLE_RATE);
+
 
   webSocket.setCACert(rootCACertificate);
 
 
-  i2s_set_sample_rates(I2S_NUM_0, 16000);
   Serial.println("switched to 16khz sample rate");
   
 
   HTTPClient http;
-  http.begin("https://9df3b80e5aae.ngrok.app/status");
+  http.begin("https://" + DOMAIN + "/status");
   int httpCode = http.GET();
   if (httpCode == HTTP_CODE_OK) {
     auto stream = http.getStream();
@@ -217,7 +231,7 @@ void setup() {
   webSocket.onEvent(onEventsCallback);
   String session_id = generateRandomUniqueString();
   webSocket.connect(
-    "wss://9df3b80e5aae.ngrok.app:443/audio/response?session_id=" + 
+    "wss://" + DOMAIN + ":443/audio/response?session_id=" + 
     session_id + 
     "&record=true" + 
     "&input_audio_format=int16&output_sample_rate=16000"

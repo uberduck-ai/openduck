@@ -26,7 +26,7 @@ from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
-from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE
+from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE
 from openduck_py.routers.templates import generate
 from openduck_py.utils.speaker_identification import (
     segment_audio,
@@ -301,7 +301,7 @@ async def audio_response(
     session_id: str,
     record: bool = False,
     input_audio_format: Literal["float32", "int32", "int16"] = "float32",
-    output_sample_rate: int = 24_000,
+    output_sample_rate: int = OUTPUT_SAMPLE_RATE,
     db: AsyncSession = Depends(get_db_async),
 ):
     await websocket.accept()

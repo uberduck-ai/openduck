@@ -169,7 +169,7 @@ def inference(
     # weird pulse at the end of the model so remove last 1/6 second
     out = out.squeeze().cpu()[..., warm_start_time : -int(sample_rate / 6)]
     if output_sample_rate != sample_rate:
-        out = resample(out, 24000, output_sample_rate)
+        out = resample(out, sample_rate, output_sample_rate)
     return out.numpy()
 
 
