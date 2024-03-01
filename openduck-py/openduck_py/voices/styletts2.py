@@ -143,6 +143,8 @@ def _compute_style(model, path):
         ref_p = model.predictor_encoder(mel_tensor.unsqueeze(1))
 
     return torch.cat([ref_s, ref_p], dim=1)
+
+
 def _split_by_language(text):
     """Takes a block of text and returns a list of blocks and a list of booleans indicating whether each block is in latin characters or not.
     This can be used for basic language splitting."""
@@ -237,7 +239,11 @@ model, sampler = load_model(
 ref_s = _compute_style(model, "models/cartoon-boy-upbeat.wav")
 
 
-def styletts2_inference(text: str, language: str = "english"):
+def styletts2_inference(
+    text: str, language: str = "english", output_sample_rate=24000
+) -> np.ndarray:
+    print("styletts2.run started")
+
     # NOTE (Sam): to deal with short inference issue https://github.com/yl4579/StyleTTS2/issues/46.
     warm_start_required = (
         len(text) < 40 and language == "english"
@@ -256,5 +262,6 @@ def styletts2_inference(text: str, language: str = "english"):
         sampler,
         ref_s,
         warm_start_index=warm_start_index,
+        output_sample_rate=output_sample_rate,
     )
     return audio_array
