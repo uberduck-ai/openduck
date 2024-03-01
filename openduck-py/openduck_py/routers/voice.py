@@ -161,13 +161,13 @@ class ResponseAgent:
 
         loop = asyncio.get_running_loop()
 
-        audio_data = segment_audio(
-            audio_data=audio_data,
-            sample_rate=WS_SAMPLE_RATE,
-            speaker_embedding=speaker_embedding,
-            pipeline=pipeline,
-            inference=inference,
-        )
+        # audio_data = segment_audio(
+        #     audio_data=audio_data,
+        #     sample_rate=WS_SAMPLE_RATE,
+        #     speaker_embedding=speaker_embedding,
+        #     pipeline=pipeline,
+        #     inference=inference,
+        # )
 
         t0 = time()
 
