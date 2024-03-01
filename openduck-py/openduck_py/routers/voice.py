@@ -9,6 +9,7 @@ import requests
 from pathlib import Path
 from uuid import uuid4
 import threading
+import traceback
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
@@ -23,7 +24,6 @@ from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import (
     IS_DEV,
     WS_SAMPLE_RATE,
@@ -31,6 +31,7 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     LOG_TO_SLACK,
     CHAT_MODEL,
+    TTS_ARCHITECTURE,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
 from openduck_py.utils.speaker_identification import (
@@ -38,6 +39,8 @@ from openduck_py.utils.speaker_identification import (
     load_pipelines,
 )
 from openduck_py.logging.slack import log_audio_to_slack
+
+TTS_SAMPLE_RATE = 24000
 
 if IS_DEV:
     normalize_text = lambda x: x
@@ -47,6 +50,23 @@ else:
     normalizer = Normalizer(input_case="cased", lang="en")
     normalize_text = normalizer.normalize
 
+if TTS_ARCHITECTURE == "styletts2":
+    from openduck_py.voices.styletts2 import styletts2_inference as tts_inference
+elif TTS_ARCHITECTURE == "piper":
+    from openduck_py.voices.piper import inference as tts_inference
+elif TTS_ARCHITECTURE == "xtts":
+    from openduck_py.voices.xtts import inference as tts_inference
+elif TTS_ARCHITECTURE == "xtts_streaming":
+    from openduck_py.voices.xtts import streaming_inference
+else:
+    raise ValueError(f"Unsupported TTS architecture: {TTS_ARCHITECTURE}")
+
+tts_name = {
+    "styletts2": "StyleTTS2",
+    "piper": "Piper",
+    "xtts": "XTTS v2",
+    "xtts_streaming": "XTTS v2 (streaming)",
+}[TTS_ARCHITECTURE]
 
 try:
     pipeline, inference = load_pipelines()
@@ -326,12 +346,10 @@ class ResponseAgent:
         )
 
         def _inference(sentence: str):
-            audio_chunk = styletts2_inference(
-                text=sentence,
-                output_sample_rate=OUTPUT_SAMPLE_RATE,
-            )
-            audio_chunk = np.int16(audio_chunk * 32767).tobytes()
-            return audio_chunk
+            audio_chunk = tts_inference(text=sentence)
+            
+            audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
+            return audio_chunk_bytes
 
         audio_chunk_bytes = await asyncio.to_thread(_inference, normalized)
         t_styletts = time()
@@ -357,6 +375,7 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
             print("response task was cancelled")
         except Exception as e:
             print("response task raised an exception:", e)
+            print(traceback.format_exc(e))
         else:
             print(
                 "response task completed successfully. Resetting audio_data and response_task"
@@ -383,7 +402,7 @@ async def log_event(
 
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
-            sample_rate = STYLETTS2_SAMPLE_RATE
+            sample_rate = TTS_SAMPLE_RATE
         wavfile.write(abs_path, sample_rate, audio)
         print(f"Wrote wavfile to {abs_path}")
 
