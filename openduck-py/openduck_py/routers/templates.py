@@ -359,6 +359,7 @@ async def generate(
     template: str, variables: Dict[str, Any], model: ModelLiteral
 ) -> GenerationResponse:
 
+    print("template: ", template, "variables: ", variables, "model: ", model)
     jinja_template = jinja2.Template(template)
     prompt = [{"content": jinja_template.render(variables)}]
 

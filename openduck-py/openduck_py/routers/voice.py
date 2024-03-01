@@ -179,17 +179,17 @@ class ResponseAgent:
             await log_event(
                 db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
-            classify_prompt = {
-                "role": "system",
-                "content": prompt("intent-classification"),
-            }
-            classification_response = await generate(
-                template=classify_prompt,
-                variables={"transcription": transcription},
-                model="gpt-35-turbo-deployment",
-            )
-            if classification_response["intent"] == "stop":
-                2 + 2
+            # classify_prompt = {
+            #     "role": "system",
+            #     "content": prompt("intent-classification"),
+            # }
+            # # classification_response = await generate(
+            # #     template=classify_prompt,
+            # #     variables={"transcription": transcription},
+            # #     model="gpt-35-turbo-deployment",
+            # # )
+            # # if classification_response["intent"] == "stop":
+            # #     2 + 2
             t_whisper = time()
             if not transcription:
                 return
