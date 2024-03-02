@@ -175,21 +175,24 @@ class ResponseAgent:
             t0 = time()
 
             transcription = await loop.run_in_executor(None, _transcribe, audio_data)
-            print("transcription", transcription)
+            # print("transcription", transcription)
             await log_event(
                 db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
-            # classify_prompt = {
-            #     "role": "system",
-            #     "content": prompt("intent-classification"),
-            # }
-            # # classification_response = await generate(
-            # #     template=classify_prompt,
-            # #     variables={"transcription": transcription},
-            # #     model="gpt-35-turbo-deployment",
-            # # )
-            # # if classification_response["intent"] == "stop":
-            # #     2 + 2
+            classify_prompt = prompt("intent-classification")
+            # print(
+            #     classify_prompt,
+            # )
+            classification_response = await generate(
+                template=classify_prompt,
+                variables={"transcription": transcription},
+                model="gpt-35-turbo-deployment",
+                role="user",
+            )
+            classification_response_message = classification_response.choices[0].message
+
+            if classification_response_message == "stop":
+                print("we should stop")
             t_whisper = time()
             if not transcription:
                 return
@@ -220,8 +223,10 @@ class ResponseAgent:
                 db.add(chat)
             messages = chat.history_json["messages"]
             messages.append(new_message)
-            response = await generate(
-                {"messages": messages}, [], "gpt-35-turbo-deployment"
+            from openduck_py.routers.templates import open_ai_chat_continuation
+
+            response = await open_ai_chat_continuation(
+                messages, "gpt-35-turbo-deployment"
             )
             response_message = response.choices[0].message
             completion = response_message.content
@@ -275,9 +280,9 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
     if response_task and response_task.done():
         try:
             result = response_task.result()
-            # if result["intent"] == "stop":
-            #     print("stop intent detected, resetting audio_data and response_task")
-            #     reset_state = True
+            if result and result["intent"] == "stop":
+                print("stop intent detected, resetting audio_data and response_task")
+                reset_state = True
         except asyncio.CancelledError:
             print("response task was cancelled")
         except Exception as e:
