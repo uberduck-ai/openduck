@@ -2,6 +2,7 @@ asgiref
 click
 numpy
 openai
+PyAudio
 pydub
 pynput
 requests
