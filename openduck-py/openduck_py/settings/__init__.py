@@ -8,3 +8,4 @@ IS_DEV = os.environ.get("IS_DEV", "False").lower() in [
     "true",
     "1",
 ]
+CHUNK_SIZE = 32768

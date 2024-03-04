@@ -26,7 +26,7 @@ from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
-from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE
+from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, CHUNK_SIZE
 from openduck_py.routers.templates import generate, open_ai_chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
@@ -254,9 +254,9 @@ class ResponseAgent:
                     "generated_tts",
                     audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
                 )
-                chunk_size = 8192 * 4
-                for i in range(0, len(audio_chunk_bytes), chunk_size):
-                    await websocket.send_bytes(audio_chunk_bytes[i : i + chunk_size])
+
+                for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
+                    await websocket.send_bytes(audio_chunk_bytes[i : i + CHUNK_SIZE])
 
             t_styletts = time()
 
