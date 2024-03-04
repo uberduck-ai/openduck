@@ -362,7 +362,6 @@ async def generate(
     role="user",
 ) -> GenerationResponse:
 
-    print("template: ", template, "variables: ", variables, "model: ", model)
     jinja_template = jinja2.Template(template)
 
     prompt = [{"content": jinja_template.render(variables), "role": role}]
@@ -371,24 +370,6 @@ async def generate(
         model=model or DEFAULT_MODEL, messages=prompt, temperature=0.3
     )
     return response
-
-
-# async def generate(
-#     template: Dict[str, List[Dict[str, str]]],
-#     variables: Dict[str, Any],
-#     model: ModelLiteral,
-# ) -> GenerationResponse:
-#     # Substitute variables for every chat in the template
-#     prompt = copy.deepcopy(template["messages"])
-#     for i, chat in enumerate(prompt):
-#         text = chat["content"]
-#         jinja_template = jinja2.Template(text)
-#         prompt[i]["content"] = jinja_template.render(variables)
-
-#     response = await client.chat.completions.create(
-#         model=model or DEFAULT_MODEL, messages=prompt, temperature=0.3
-#     )
-#     return response
 
 
 def check_variables(

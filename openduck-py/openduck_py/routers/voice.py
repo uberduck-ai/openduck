@@ -27,7 +27,7 @@ from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE
-from openduck_py.routers.templates import generate
+from openduck_py.routers.templates import generate, open_ai_chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
@@ -181,7 +181,6 @@ class ResponseAgent:
             classification_response_message = classification_response.choices[
                 0
             ].message.content
-            print("classification_response_message", classification_response_message)
             if classification_response_message == "stop":
                 await websocket.close()
                 return {"intent": "stop", "transcript": None}
@@ -215,7 +214,6 @@ class ResponseAgent:
                 db.add(chat)
             messages = chat.history_json["messages"]
             messages.append(new_message)
-            from openduck_py.routers.templates import open_ai_chat_continuation
 
             response = await open_ai_chat_continuation(
                 messages, "gpt-35-turbo-deployment"
