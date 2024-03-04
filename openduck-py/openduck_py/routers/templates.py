@@ -345,17 +345,26 @@ async def delete_deployment(
     return StatusResponse(status="OK")
 
 
+async def open_ai_chat_continuation(
+    messages: List[Dict[str, str]], model: ModelLiteral
+) -> GenerationResponse:
+
+    response = await client.chat.completions.create(
+        model=model or DEFAULT_MODEL, messages=messages, temperature=0.3
+    )
+    return response
+
+
 async def generate(
-    template: Dict[str, List[Dict[str, str]]],
+    template: str,
     variables: Dict[str, Any],
     model: ModelLiteral,
+    role="user",
 ) -> GenerationResponse:
-    # Substitute variables for every chat in the template
-    prompt = copy.deepcopy(template["messages"])
-    for i, chat in enumerate(prompt):
-        text = chat["content"]
-        jinja_template = jinja2.Template(text)
-        prompt[i]["content"] = jinja_template.render(variables)
+
+    jinja_template = jinja2.Template(template)
+
+    prompt = [{"content": jinja_template.render(variables), "role": role}]
 
     response = await client.chat.completions.create(
         model=model or DEFAULT_MODEL, messages=prompt, temperature=0.3

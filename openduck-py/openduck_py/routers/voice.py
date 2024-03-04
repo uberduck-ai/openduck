@@ -26,8 +26,8 @@ from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
-from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE
-from openduck_py.routers.templates import generate
+from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, CHUNK_SIZE
+from openduck_py.routers.templates import generate, open_ai_chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
@@ -137,7 +137,7 @@ class ResponseAgent:
         self,
         websocket: WebSocket,
         audio_data: np.ndarray,
-    ):
+    ) -> Dict[str, str]:
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             self.is_responding = True
@@ -168,20 +168,25 @@ class ResponseAgent:
 
             transcription = await loop.run_in_executor(None, _transcribe, audio_data)
             print("TRANSCRIPTION: ", transcription)
-
-            if not transcription:
-                return
-
-            t0 = time()
-
-            transcription = await loop.run_in_executor(None, _transcribe, audio_data)
-            print("transcription", transcription)
             await log_event(
                 db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
+            classify_prompt = prompt("intent-classification")
+            classification_response = await generate(
+                template=classify_prompt,
+                variables={"transcription": transcription},
+                model="gpt-35-turbo-deployment",
+                role="user",
+            )
+            classification_response_message = classification_response.choices[
+                0
+            ].message.content
+            if classification_response_message == "stop":
+                await websocket.close()
+                return {"intent": "stop", "transcript": None}
             t_whisper = time()
             if not transcription:
-                return
+                return {"intent": None, "transcript": None}
 
             system_prompt = {
                 "role": "system",
@@ -192,7 +197,7 @@ class ResponseAgent:
             await log_event(db, self.session_id, "removed_echo", audio=audio_data)
             if len(audio_data) < 100:
                 print(f"All audio has been filtered out. Not responding.")
-                return
+                return {"intent": None, "transcript": None}
 
             chat = (
                 await db.execute(
@@ -209,8 +214,9 @@ class ResponseAgent:
                 db.add(chat)
             messages = chat.history_json["messages"]
             messages.append(new_message)
-            response = await generate(
-                {"messages": messages}, [], "gpt-35-turbo-deployment"
+
+            response = await open_ai_chat_continuation(
+                messages, "gpt-35-turbo-deployment"
             )
             response_message = response.choices[0].message
             completion = response_message.content
@@ -224,7 +230,7 @@ class ResponseAgent:
 
             if "$ECHO" in completion:
                 print("Echo detected, not sending response.")
-                return
+                return {"intent": None, "transcript": None}
 
             messages.append({"role": response_message.role, "content": completion})
             chat.history_json["messages"] = messages
@@ -248,8 +254,9 @@ class ResponseAgent:
                     "generated_tts",
                     audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
                 )
-                for i in range(0, len(audio_chunk_bytes), 1024):
-                    await websocket.send_bytes(audio_chunk_bytes[i : i + 1024])
+
+                for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
+                    await websocket.send_bytes(audio_chunk_bytes[i : i + CHUNK_SIZE])
 
             t_styletts = time()
 
@@ -273,6 +280,7 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
                 "response task completed successfully. Resetting audio_data and response_task"
             )
             reset_state = True
+
         return reset_state
 
 
