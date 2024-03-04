@@ -137,7 +137,7 @@ class ResponseAgent:
         self,
         websocket: WebSocket,
         audio_data: np.ndarray,
-    ):
+    ) -> Dict[str, str]:
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             self.is_responding = True
@@ -168,34 +168,26 @@ class ResponseAgent:
 
             transcription = await loop.run_in_executor(None, _transcribe, audio_data)
             print("TRANSCRIPTION: ", transcription)
-
-            if not transcription:
-                return
-
-            t0 = time()
-
-            transcription = await loop.run_in_executor(None, _transcribe, audio_data)
-            # print("transcription", transcription)
             await log_event(
                 db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
             classify_prompt = prompt("intent-classification")
-            # print(
-            #     classify_prompt,
-            # )
             classification_response = await generate(
                 template=classify_prompt,
                 variables={"transcription": transcription},
                 model="gpt-35-turbo-deployment",
                 role="user",
             )
-            classification_response_message = classification_response.choices[0].message
-
+            classification_response_message = classification_response.choices[
+                0
+            ].message.content
+            print("classification_response_message", classification_response_message)
             if classification_response_message == "stop":
-                print("we should stop")
+                await websocket.close()
+                return {"intent": "stop", "transcript": None}
             t_whisper = time()
             if not transcription:
-                return
+                return {"intent": None, "transcript": None}
 
             system_prompt = {
                 "role": "system",
@@ -206,7 +198,7 @@ class ResponseAgent:
             await log_event(db, self.session_id, "removed_echo", audio=audio_data)
             if len(audio_data) < 100:
                 print(f"All audio has been filtered out. Not responding.")
-                return
+                return {"intent": None, "transcript": None}
 
             chat = (
                 await db.execute(
@@ -240,7 +232,7 @@ class ResponseAgent:
 
             if "$ECHO" in completion:
                 print("Echo detected, not sending response.")
-                return
+                return {"intent": None, "transcript": None}
 
             messages.append({"role": response_message.role, "content": completion})
             chat.history_json["messages"] = messages
@@ -264,8 +256,9 @@ class ResponseAgent:
                     "generated_tts",
                     audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
                 )
-                for i in range(0, len(audio_chunk_bytes), 1024):
-                    await websocket.send_bytes(audio_chunk_bytes[i : i + 1024])
+                chunk_size = 8192 * 4
+                for i in range(0, len(audio_chunk_bytes), chunk_size):
+                    await websocket.send_bytes(audio_chunk_bytes[i : i + chunk_size])
 
             t_styletts = time()
 
@@ -279,10 +272,7 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
     reset_state = False
     if response_task and response_task.done():
         try:
-            result = response_task.result()
-            if result and result["intent"] == "stop":
-                print("stop intent detected, resetting audio_data and response_task")
-                reset_state = True
+            response_task.result()
         except asyncio.CancelledError:
             print("response task was cancelled")
         except Exception as e:
