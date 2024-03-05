@@ -348,7 +348,6 @@ async def delete_deployment(
 async def open_ai_chat_continuation(
     messages: List[Dict[str, str]], model: ModelLiteral
 ) -> GenerationResponse:
-
     response = await client.chat.completions.create(
         model=model or DEFAULT_MODEL, messages=messages, temperature=0.3
     )
@@ -361,7 +360,6 @@ async def generate(
     model: ModelLiteral,
     role="user",
 ) -> GenerationResponse:
-
     jinja_template = jinja2.Template(template)
 
     prompt = [{"content": jinja_template.render(variables), "role": role}]

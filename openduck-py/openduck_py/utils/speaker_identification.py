@@ -101,7 +101,6 @@ def segment_audio(
     pipeline,
     inference,
 ) -> np.array:
-
     audio_data_tensor = torch.tensor(audio_data).unsqueeze(0)
     start = time.time()
     speaker_segments = identify_speakers(
