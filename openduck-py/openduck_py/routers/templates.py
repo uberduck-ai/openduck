@@ -32,6 +32,7 @@ class GenerationResponse(BaseModel):
 
 # TODO (Matthew): Move these to utils, or just call the chat completions API without wrapper functions
 
+
 async def open_ai_chat_continuation(
     messages: List[Dict[str, str]], model: ModelLiteral
 ) -> GenerationResponse:
