@@ -5,6 +5,7 @@ alembic
 asgiref
 asyncpg
 azure-cognitiveservices-speech
+daily-python
 einops
 einops_exts
 fastapi
