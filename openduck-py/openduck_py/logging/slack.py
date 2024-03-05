@@ -5,13 +5,15 @@ from openduck_py.utils.s3 import s3_client
 
 LOGGING_BUCKET = os.environ.get("OUTPUT_BUCKET")
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
-SLACK_LOGS_CHANNEL_ID = os.environ.get("SLACK_LOGS_CHANNEL_ID")
+SLACK_LOGS_CHANNEL_ID = os.environ.get("SLACK_LOGS_CHANNEL")
+
+_client = s3_client()  # NOTE (Sam): should we move this to utils/s3?
 
 
 def log_audio_to_slack(audio_path):
 
     s3_key = audio_path.replace("//", "_")
-    s3_client.upload_file(audio_path, LOGGING_BUCKET, s3_key)
+    _client.upload_file(audio_path, LOGGING_BUCKET, s3_key)
     url = f"https://{LOGGING_BUCKET}.s3.amazonaws.com/{s3_key}"
     requests.post(
         "https://slack.com/api/chat.postMessage",
