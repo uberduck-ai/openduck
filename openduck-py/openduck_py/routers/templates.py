@@ -15,6 +15,7 @@ client = AsyncAzureOpenAI(
 ModelLiteral = Literal["gpt-35-turbo-deployment", "gpt-4-deployment"]
 DEFAULT_MODEL: ModelLiteral = "gpt-35-turbo-deployment"
 
+
 class GenerationResponse(BaseModel):
     """
     OpenAI Chat Completions response format:
@@ -27,8 +28,6 @@ class GenerationResponse(BaseModel):
     model: str
     object: str
     usage: Any
-
-
 
 
 async def open_ai_chat_continuation(
@@ -54,4 +53,3 @@ async def generate(
         model=model or DEFAULT_MODEL, messages=prompt, temperature=0.3
     )
     return response
-
