@@ -33,6 +33,8 @@ from openduck_py.utils.speaker_identification import (
     load_pipelines,
 )
 
+LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
+
 if IS_DEV:
     normalize_text = lambda x: x
 else:
@@ -91,6 +93,13 @@ class WavAppender:
             self.file.close()
             self.file = None
             self.params_set = False
+
+    def log(self):
+        if LOG_TO_SLACK:
+            from openduck_py.logging.slack import log_audio_to_slack
+
+            log_audio_to_slack(self.wav_file_path)
+            print(f"Logged audio to {self.wav_file_path}")
 
 
 class SileroVad:
@@ -392,6 +401,7 @@ async def audio_response(
                 i = upper
     finally:
         recorder.close_file()
+        recorder.log()
 
     # TODO(zach): We never actually close it right now, we wait for the client
     # to close. But we should close it based on some timeout.
