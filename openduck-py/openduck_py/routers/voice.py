@@ -122,7 +122,6 @@ class SileroVad:
 
 
 class ResponseAgent:
-
     def __init__(self, session_id: str, output_sample_rate=24_000):
         self.session_id = session_id
         self.output_sample_rate = output_sample_rate

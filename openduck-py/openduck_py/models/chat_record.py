@@ -32,9 +32,15 @@ EventName = Literal[
 class DBChatRecord(Base):
     __tablename__ = "chat_record"
     id = Column(Integer, primary_key=True)
-    session_id = Column(Text, ForeignKey("chat_history.session_id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(
+        Text,
+        ForeignKey("chat_history.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     event_name = Column(Text, nullable=False)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
     meta_json = Column(MutableDict.as_mutable(JSON))
+
 
 chat_records = DBChatRecord.__table__

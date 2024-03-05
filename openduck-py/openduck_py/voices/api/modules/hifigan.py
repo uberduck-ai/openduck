@@ -444,7 +444,6 @@ class Generator(torch.nn.Module):
         self.conv_post.apply(init_weights)
 
     def forward(self, x, s, f0):
-
         f0 = self.f0_upsamp(f0[:, None]).transpose(1, 2)  # bs,n,t
 
         har_source, noi_source, uv = self.m_source(f0)
