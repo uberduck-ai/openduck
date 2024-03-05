@@ -57,8 +57,6 @@ whisper_model = load_model("tiny.en")
 audio_router = APIRouter(prefix="/audio")
 
 
-
-
 def _transcribe(audio_data):
     return whisper_model.transcribe(audio_data)["text"]
 
