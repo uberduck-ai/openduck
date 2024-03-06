@@ -2,6 +2,7 @@ openduck-py/*.wav
 openduck-py/*.npy
 *.ipynb
 openduck-py/models
+openduck-py/logs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

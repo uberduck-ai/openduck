@@ -32,28 +32,6 @@ def s3_client():
     return _client
 
 
-def upload_fileobj(object_name, bucket, fo):
-    _client = s3_client()
-    _client.upload_fileobj(fo, bucket, object_name)
-
-
-def upload_file(object_name, bucket, path=None, fp=None):
-    """object_name: str = The name of the object path in s3"""
-    _client = s3_client()
-    if path:
-        with Path(path).open("rb") as fp:
-            _client.upload_fileobj(fp, bucket, object_name)
-    elif fp:
-        _client.upload_fileobj(fp, bucket, object_name)
-    else:
-        raise Exception("Must pass either path or file-like object")
-
-
-def delete_object(bucket, object):
-    _client = s3_client()
-    _client.delete_object(Bucket=bucket, Key=object)
-
-
 def download_file(object_name, bucket, path=None):
     safe_name = re.sub(r"[^.0-9a-zA-Z_-]", "_", object_name)
     if path is None:

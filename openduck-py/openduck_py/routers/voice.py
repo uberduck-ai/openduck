@@ -26,12 +26,19 @@ from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
-from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, CHUNK_SIZE
+from openduck_py.settings import (
+    IS_DEV,
+    WS_SAMPLE_RATE,
+    OUTPUT_SAMPLE_RATE,
+    CHUNK_SIZE,
+    LOG_TO_SLACK,
+)
 from openduck_py.routers.templates import generate, open_ai_chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
 )
+from openduck_py.logging.slack import log_audio_to_slack
 
 if IS_DEV:
     normalize_text = lambda x: x
@@ -91,6 +98,10 @@ class WavAppender:
             self.file.close()
             self.file = None
             self.params_set = False
+
+    def log(self):
+        if LOG_TO_SLACK:
+            log_audio_to_slack(self.wav_file_path)
 
 
 class SileroVad:
@@ -392,6 +403,7 @@ async def audio_response(
                 i = upper
     finally:
         recorder.close_file()
+        recorder.log()
 
     # TODO(zach): We never actually close it right now, we wait for the client
     # to close. But we should close it based on some timeout.
