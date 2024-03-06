@@ -12,30 +12,38 @@ import wave
 
 from daily import *
 
-SAMPLE_RATE = 16000
+SAMPLE_RATE = 44000
 NUM_CHANNELS = 1
 
 
 class SendWavApp:
     def __init__(self, input_file_name, sample_rate, num_channels):
         self.__mic_device = Daily.create_microphone_device(
-            "my-mic", sample_rate=sample_rate, channels=num_channels
+            "my-mic", sample_rate=sample_rate, channels=num_channels, non_blocking=True
         )
+        self.__speaker_device = Daily.create_speaker_device(
+            "my-speaker", sample_rate=sample_rate, channels=num_channels
+        )
+        Daily.select_speaker_device("my-speaker")
 
         self.__client = CallClient()
 
         self.__client.update_subscription_profiles(
-            {"base": {"camera": "unsubscribed", "microphone": "unsubscribed"}}
+            {
+                "base": {
+                    "camera": "unsubscribed",
+                    "microphone": "subscribed",
+                    "speaker": "subscribed",
+                }
+            }
         )
 
         self.__app_quit = False
         self.__app_error = None
 
         self.__start_event = threading.Event()
-        self.__thread = threading.Thread(
-            target=self.send_wav_file, args=[input_file_name]
-        )
-        self.__thread.start()
+        self.__receive_thread = threading.Thread(target=self.receive_audio)
+        self.__receive_thread.start()
 
     def on_joined(self, data, error):
         if error:
@@ -53,16 +61,26 @@ class SendWavApp:
                         "isEnabled": True,
                         "settings": {"deviceId": "my-mic"},
                     },
+                    "speaker": {
+                        "isEnabled": True,
+                        "settings": {"deviceId": "my-speaker"},
+                    },
                 }
             },
             completion=self.on_joined,
         )
-        self.__thread.join()
+        self.__receive_thread.join()
 
     def leave(self):
         self.__app_quit = True
-        self.__thread.join()
+        self.__receive_thread.join()
         self.__client.leave()
+
+    def receive_audio(self):
+        while not self.__app_quit:
+            frames = self.__speaker_device.read_frames(440)
+            if frames:
+                print(f"Received frames: {len(frames)}")
 
     def send_wav_file(self, file_name):
         self.__start_event.wait()
@@ -115,9 +133,6 @@ def main():
         print("Ctrl-C detected. Exiting!")
     finally:
         app.leave()
-
-    # Let leave finish
-    time.sleep(2)
 
 
 if __name__ == "__main__":
