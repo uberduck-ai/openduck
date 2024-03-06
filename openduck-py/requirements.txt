@@ -33,6 +33,6 @@ torch
 torchvision
 torchaudio
 transformers
-TTS >= 0.21.0
+TTS>=0.22.0
 uvicorn[standard]
 websockets
