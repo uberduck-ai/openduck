@@ -26,14 +26,19 @@ from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
-from openduck_py.settings import IS_DEV, WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, CHUNK_SIZE
+from openduck_py.settings import (
+    IS_DEV,
+    WS_SAMPLE_RATE,
+    OUTPUT_SAMPLE_RATE,
+    CHUNK_SIZE,
+    LOG_TO_SLACK,
+)
 from openduck_py.routers.templates import generate, open_ai_chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
 )
-
-LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
+from openduck_py.logging.slack import log_audio_to_slack
 
 if IS_DEV:
     normalize_text = lambda x: x
@@ -96,10 +101,7 @@ class WavAppender:
 
     def log(self):
         if LOG_TO_SLACK:
-            from openduck_py.logging.slack import log_audio_to_slack
-
             log_audio_to_slack(self.wav_file_path)
-            print(f"Logged audio to {self.wav_file_path}")
 
 
 class SileroVad:

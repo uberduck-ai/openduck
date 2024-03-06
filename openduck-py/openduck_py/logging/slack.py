@@ -12,9 +12,8 @@ _client = s3_client()  # NOTE (Sam): should we move this to utils/s3?
 
 def log_audio_to_slack(audio_path):
 
-    s3_key = audio_path.replace("//", "_")
-    _client.upload_file(audio_path, LOGGING_BUCKET, s3_key)
-    url = f"https://{LOGGING_BUCKET}.s3.amazonaws.com/{s3_key}"
+    _client.upload_file(audio_path, LOGGING_BUCKET, audio_path)
+    url = f"https://{LOGGING_BUCKET}.s3.amazonaws.com/{audio_path}"
     requests.post(
         "https://slack.com/api/chat.postMessage",
         params={
