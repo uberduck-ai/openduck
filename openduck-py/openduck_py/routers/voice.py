@@ -398,6 +398,12 @@ async def audio_response(
         recorder.close_file()
         recorder.log()
 
+<<<<<<< HEAD
     await responder.response_queue.join()
+=======
+    # TODO(zach): We never actually close it right now, we wait for the client
+    # to close. But we should close it based on some timeout.
+    await consumer_task.join()
+>>>>>>> Return audio to an asyncio queue
     await websocket.close()
     await log_event(db, session_id, "ended_session")
