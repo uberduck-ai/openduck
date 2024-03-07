@@ -1,6 +1,7 @@
 aioboto3
 aiosqlite
 alembic
+daily-python
 einops
 einops_exts
 fastapi

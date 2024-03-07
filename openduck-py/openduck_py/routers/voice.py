@@ -6,6 +6,7 @@ from typing import Optional, Dict, Literal
 import wave
 import requests
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
@@ -13,6 +14,7 @@ from scipy.io import wavfile
 from sqlalchemy import select
 import torch
 from whisper import load_model
+from daily import *
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -368,6 +370,13 @@ async def log_event(
     await db.commit()
 
 
+async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
+    while True:
+        chunk = await queue.get()  # Dequeue a chunk
+        mic.write_frames(chunk)
+        queue.task_done()
+
+
 async def consumer(queue: asyncio.Queue, websocket: WebSocket):
     """Dequeue audio chunks and send them through the websocket."""
     while True:
@@ -412,3 +421,51 @@ async def audio_response(
     await responder.response_queue.join()
     await websocket.close()
     await log_event(db, session_id, "ended_session")
+
+
+async def connect_daily():
+    session_id = str(uuid4())
+    Daily.init()
+    mic = Daily.create_microphone_device(
+        "my-mic", sample_rate=OUTPUT_SAMPLE_RATE, channels=1, non_blocking=True
+    )
+    speaker = Daily.create_speaker_device(
+        "my-speaker", sample_rate=WS_SAMPLE_RATE, channels=1
+    )
+    Daily.select_speaker_device("my-speaker")
+    client = CallClient()
+    client.join(
+        meeting_url="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+        client_settings={
+            "inputs": {
+                "camera": False,
+                "microphone": {
+                    "isEnabled": True,
+                    "settings": {"deviceId": "my-mic"},
+                },
+                "speaker": {
+                    "isEnabled": True,
+                    "settings": {"deviceId": "my-speaker"},
+                },
+            }
+        },
+    )
+    responder = ResponseAgent(session_id=session_id, record=True)
+    asyncio.create_task(consumer(responder.response_queue, mic))
+    while True:
+        if _check_for_exceptions(responder.response_task):
+            responder.audio_data = []
+            responder.response_task = None
+            responder.time_of_last_activity = time()
+
+        message = speaker.read_frames(CHUNK_SIZE)
+        await responder.receive_audio(message)
+
+    responder.recorder.close_file()
+    responder.recorder.log()
+    await responder.response_queue.join()
+    await log_event(db, session_id, "ended_session")
+
+
+if __name__ == "__main__":
+    connect_daily()
