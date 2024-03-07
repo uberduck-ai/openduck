@@ -381,7 +381,6 @@ async def audio_response(
     db: AsyncSession = Depends(get_db_async),
 ):
     await websocket.accept()
-    await log_event(db, session_id, "started_session")
 
     responder = ResponseAgent(session_id=session_id, record=record)
     asyncio.create_task(consumer(responder.response_queue, websocket))
