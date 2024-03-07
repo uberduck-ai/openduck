@@ -14,6 +14,7 @@ Flask-SQLAlchemy
 google-cloud-texttospeech
 greenlet
 librosa
+litellm
 munch
 nemo_text_processing
 nltk
