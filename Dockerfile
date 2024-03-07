@@ -2,8 +2,7 @@ FROM nvcr.io/nvidia/pytorch:24.01-py3
 ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /openduck-py
 
-# Copying is only necessary on prod, when you're not mounting the volume
-# COPY ./openduck-py /openduck-py
+COPY ./openduck-py /openduck-py
 
 RUN apt-get update && \
     apt-get upgrade -y && \
