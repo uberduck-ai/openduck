@@ -129,6 +129,8 @@ class ResponseAgent:
     def __init__(self, session_id: str, output_sample_rate=24_000):
         self.session_id = session_id
         self.output_sample_rate = output_sample_rate
+        self.response_queue = asyncio.Queue()
+        self.is_responding = False
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -138,12 +140,12 @@ class ResponseAgent:
 
     async def start_response(
         self,
-        websocket: WebSocket,
         audio_data: np.ndarray,
-    ) -> Dict[str, str]:
+    ):
+        self.is_responding = True
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
-            self.is_responding = True
+            t0 = time()
 
             def _inference(sentence: str):
                 audio_chunk = styletts2_inference(
@@ -153,6 +155,7 @@ class ResponseAgent:
                 audio_chunk = np.int16(audio_chunk * 32767).tobytes()
                 return audio_chunk
 
+            # Remove echo
             audio_data = await asyncio.to_thread(
                 segment_audio,
                 audio_data,
@@ -162,13 +165,12 @@ class ResponseAgent:
                 inference,
             )
             await log_event(db, self.session_id, "removed_echo", audio=audio_data)
-            if len(audio_data) < 100:
-                print(f"All audio has been filtered out. Not responding.")
 
-            t0 = time()
+            # TODO: timestamp for echo removal
 
             transcription = await asyncio.to_thread(_transcribe, audio_data)
             print("TRANSCRIPTION: ", transcription)
+            t_whisper = time()
             await log_event(
                 db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
@@ -182,23 +184,19 @@ class ResponseAgent:
             classification_response_message = classification_response.choices[
                 0
             ].message.content
-            if classification_response_message == "stop":
-                await websocket.close()
-                return {"intent": "stop", "transcript": None}
-            t_whisper = time()
-            if not transcription:
-                return {"intent": None, "transcript": None}
+            if (
+                classification_response_message == "stop"
+                or not transcription
+                or len(audio_data) < 100
+            ):
+                await self.response_queue.put(None)  # Signal to stop
+                return
 
             system_prompt = {
                 "role": "system",
                 "content": prompt("system-prompt"),
             }
             new_message = {"role": "user", "content": transcription}
-
-            await log_event(db, self.session_id, "removed_echo", audio=audio_data)
-            if len(audio_data) < 100:
-                print(f"All audio has been filtered out. Not responding.")
-                return {"intent": None, "transcript": None}
 
             chat = (
                 await db.execute(
@@ -231,7 +229,7 @@ class ResponseAgent:
 
             if "$ECHO" in completion:
                 print("Echo detected, not sending response.")
-                return {"intent": None, "transcript": None}
+                return
 
             messages.append({"role": response_message.role, "content": completion})
             chat.history_json["messages"] = messages
@@ -253,7 +251,8 @@ class ResponseAgent:
                 )
 
                 for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
-                    await websocket.send_bytes(audio_chunk_bytes[i : i + CHUNK_SIZE])
+                    chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
+                    await self.response_queue.put(chunk)
 
             t_styletts = time()
 
@@ -307,6 +306,14 @@ async def log_event(
     await db.commit()
 
 
+async def consumer(queue: asyncio.Queue, websocket: WebSocket):
+    """Dequeue audio chunks and send them through the websocket."""
+    while True:
+        chunk = await queue.get()  # Dequeue a chunk
+        await websocket.send_bytes(chunk)  # Send the chunk through the websocket
+        queue.task_done()
+
+
 @audio_router.websocket("/response")
 async def audio_response(
     websocket: WebSocket,
@@ -328,6 +335,8 @@ async def audio_response(
 
     audio_data = []
     response_task = None
+    consumer_task = asyncio.create_task(consumer(responder.response_queue, websocket))
+
     try:
         while True:
             if time() - time_of_last_activity > 300:
@@ -373,7 +382,6 @@ async def audio_response(
                         if response_task is None or response_task.done():
                             response_task = asyncio.create_task(
                                 responder.start_response(
-                                    websocket,
                                     np.concatenate(audio_data),
                                 )
                             )
@@ -394,5 +402,6 @@ async def audio_response(
 
     # TODO(zach): We never actually close it right now, we wait for the client
     # to close. But we should close it based on some timeout.
+    await consumer_task.join()
     await websocket.close()
     await log_event(db, session_id, "ended_session")
