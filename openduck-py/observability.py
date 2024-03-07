@@ -66,14 +66,7 @@ event_name_options = [event_name[0] for event_name in unique_event_names]
 st.sidebar.write("Select events to show:")
 show_events = {}
 for event in event_name_options:
-    value = False
-    if event in [
-        "generated_tts",
-        "generated_completion",
-        "transcribed_audio",
-        "started_response",
-    ]:
-        value = True
+    value = True
     show_events[event] = st.sidebar.checkbox(event, value=value)
 
 if session_id_input:
