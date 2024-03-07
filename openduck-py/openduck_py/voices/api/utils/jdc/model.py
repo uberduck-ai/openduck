@@ -4,6 +4,7 @@ Kum et al. - "Joint Detection and Classification of Singing Voice Melody Using
 Convolutional Recurrent Neural Networks" (2019)
 Link: https://www.semanticscholar.org/paper/Joint-Detection-and-Classification-of-Singing-Voice-Kum-Nam/60a2ad4c7db43bace75805054603747fcd062c0d
 """
+
 import torch
 from torch import nn
 

@@ -220,9 +220,7 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await chat_continuation(
-                messages
-            )
+            response = await chat_continuation(messages)
             response_message = response.choices[0].message
             completion = response_message.content
             await log_event(

@@ -18,9 +18,7 @@ os.environ["AZURE_API_VERSION"] = "2023-05-15"
 async def chat_continuation(
     messages: List[Dict[str, str]], model: str = CHAT_MODEL
 ) -> ModelResponse:
-    response = await acompletion(
-        model=model, messages=messages, temperature=0.3
-    )
+    response = await acompletion(model=model, messages=messages, temperature=0.3)
     return response
 
 
@@ -34,7 +32,5 @@ async def generate(
 
     prompt = [{"content": jinja_template.render(variables), "role": role}]
 
-    response = await acompletion(
-        model=model, messages=prompt, temperature=0.3
-    )
+    response = await acompletion(model=model, messages=prompt, temperature=0.3)
     return response
