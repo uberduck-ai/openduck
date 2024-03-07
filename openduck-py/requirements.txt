@@ -1,10 +1,6 @@
-Cython
 aioboto3
 aiosqlite
 alembic
-asgiref
-asyncpg
-azure-cognitiveservices-speech
 einops
 einops_exts
 fastapi
