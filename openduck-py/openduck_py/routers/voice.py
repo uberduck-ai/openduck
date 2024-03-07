@@ -400,6 +400,6 @@ async def audio_response(
 
     # TODO(zach): We never actually close it right now, we wait for the client
     # to close. But we should close it based on some timeout.
-    await consumer_task.join()
+    await responder.response_queue.join()
     await websocket.close()
     await log_event(db, session_id, "ended_session")
