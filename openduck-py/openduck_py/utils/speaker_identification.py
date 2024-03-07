@@ -19,13 +19,14 @@ def load_pipelines() -> tuple:
         "pyannote/speaker-diarization-3.1",
         use_auth_token=HF_AUTH_TOKEN,
     )
-    pipeline.to(torch.device("cuda"))
 
     embedding_pipeline = Model.from_pretrained(
         "pyannote/embedding", use_auth_token=HF_AUTH_TOKEN
     )
     inference = Inference(embedding_pipeline, window="whole")
-    inference.to(torch.device("cuda"))
+    if torch.cuda.is_available():
+        pipeline.to(torch.device("cuda"))
+        inference.to(torch.device("cuda"))
 
     return pipeline, inference
 
@@ -100,7 +101,6 @@ def segment_audio(
     pipeline,
     inference,
 ) -> np.array:
-
     audio_data_tensor = torch.tensor(audio_data).unsqueeze(0)
     start = time.time()
     speaker_segments = identify_speakers(

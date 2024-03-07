@@ -12,5 +12,3 @@ RUN apt-get update && \
 RUN pip install --upgrade pip
 RUN pip install Cython
 RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . /openduck-py

@@ -1,6 +1,7 @@
 from typing import List
 
 import torch
+from torchaudio.functional import resample
 import numpy as np
 from munch import Munch
 import nltk
@@ -88,7 +89,8 @@ def inference(
     bps=1.5,
     nlines=1,
     warm_start_index=0,
-):
+    output_sample_rate=24000,
+) -> np.ndarray:
     textcleaner = TextCleaner()
     tokens = textcleaner(phonemes)
     tokens.insert(0, 0)
@@ -164,9 +166,11 @@ def inference(
         out = model.decoder(asr, F0_pred, N_pred, ref.squeeze().unsqueeze(0))
         warm_start_time = int(pred_dur[:warm_start_index].sum() * hop_length)
 
-    return (
-        out.squeeze().cpu().numpy()[..., warm_start_time : -int(sample_rate / 6)]
-    )  # weird pulse at the end of the model so remove last 1/6 second
+    # weird pulse at the end of the model so remove last 1/6 second
+    out = out.squeeze().cpu()[..., warm_start_time : -int(sample_rate / 6)]
+    if output_sample_rate != sample_rate:
+        out = resample(out, sample_rate, output_sample_rate)
+    return out.numpy()
 
 
 # IPA Phonemizer: https://github.com/bootphon/phonemizer

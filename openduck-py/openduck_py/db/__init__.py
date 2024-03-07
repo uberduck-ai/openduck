@@ -5,7 +5,9 @@ from sqlalchemy.orm import configure_mappers, declarative_base, sessionmaker
 
 
 connection_string = f"sqlite:///{Path(__file__).parent.parent.parent}/test.db"
-async_connection_string = f"sqlite+aiosqlite:///{Path(__file__).parent.parent.parent}/test.db"
+async_connection_string = (
+    f"sqlite+aiosqlite:///{Path(__file__).parent.parent.parent}/test.db"
+)
 
 
 class UberBase:

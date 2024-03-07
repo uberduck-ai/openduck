@@ -99,7 +99,6 @@ def to_batch(
 
 
 class Diffusion(nn.Module):
-
     alias: str = ""
 
     """Base diffusion class"""
@@ -118,7 +117,6 @@ class Diffusion(nn.Module):
 
 
 class VDiffusion(Diffusion):
-
     alias = "v"
 
     def __init__(self, net: nn.Module, *, sigma_distribution: Distribution):
@@ -186,9 +184,9 @@ class KDiffusion(Diffusion):
         sigma_data = self.sigma_data
         c_noise = torch.log(sigmas) * 0.25
         sigmas = rearrange(sigmas, "b -> b 1 1")
-        c_skip = (sigma_data ** 2) / (sigmas ** 2 + sigma_data ** 2)
-        c_out = sigmas * sigma_data * (sigma_data ** 2 + sigmas ** 2) ** -0.5
-        c_in = (sigmas ** 2 + sigma_data ** 2) ** -0.5
+        c_skip = (sigma_data**2) / (sigmas**2 + sigma_data**2)
+        c_out = sigmas * sigma_data * (sigma_data**2 + sigmas**2) ** -0.5
+        c_in = (sigmas**2 + sigma_data**2) ** -0.5
         return c_skip, c_out, c_in, c_noise
 
     def denoise_fn(
@@ -210,7 +208,7 @@ class KDiffusion(Diffusion):
 
     def loss_weight(self, sigmas: Tensor) -> Tensor:
         # Computes weight depending on data distribution
-        return (sigmas ** 2 + self.sigma_data ** 2) * (sigmas * self.sigma_data) ** -2
+        return (sigmas**2 + self.sigma_data**2) * (sigmas * self.sigma_data) ** -2
 
     def forward(self, x: Tensor, noise: Tensor = None, **kwargs) -> Tensor:
         batch_size, device = x.shape[0], x.device
@@ -223,7 +221,7 @@ class KDiffusion(Diffusion):
         # Add noise to input
         noise = default(noise, lambda: torch.randn_like(x))
         x_noisy = x + sigmas_padded * noise
-        
+
         # Compute denoised values
         x_denoised = self.denoise_fn(x_noisy, sigmas=sigmas, **kwargs)
 
@@ -236,7 +234,6 @@ class KDiffusion(Diffusion):
 
 
 class VKDiffusion(Diffusion):
-
     alias = "vk"
 
     def __init__(self, net: nn.Module, *, sigma_distribution: Distribution):
@@ -247,9 +244,9 @@ class VKDiffusion(Diffusion):
     def get_scale_weights(self, sigmas: Tensor) -> Tuple[Tensor, ...]:
         sigma_data = 1.0
         sigmas = rearrange(sigmas, "b -> b 1 1")
-        c_skip = (sigma_data ** 2) / (sigmas ** 2 + sigma_data ** 2)
-        c_out = -sigmas * sigma_data * (sigma_data ** 2 + sigmas ** 2) ** -0.5
-        c_in = (sigmas ** 2 + sigma_data ** 2) ** -0.5
+        c_skip = (sigma_data**2) / (sigmas**2 + sigma_data**2)
+        c_out = -sigmas * sigma_data * (sigma_data**2 + sigmas**2) ** -0.5
+        c_in = (sigmas**2 + sigma_data**2) ** -0.5
         return c_skip, c_out, c_in
 
     def sigma_to_t(self, sigmas: Tensor) -> Tensor:
@@ -330,9 +327,9 @@ class KarrasSchedule(Schedule):
         rho_inv = 1.0 / self.rho
         steps = torch.arange(num_steps, device=device, dtype=torch.float32)
         sigmas = (
-            self.sigma_max ** rho_inv
+            self.sigma_max**rho_inv
             + (steps / (num_steps - 1))
-            * (self.sigma_min ** rho_inv - self.sigma_max ** rho_inv)
+            * (self.sigma_min**rho_inv - self.sigma_max**rho_inv)
         ) ** self.rho
         sigmas = F.pad(sigmas, pad=(0, 1), value=0.0)
         return sigmas
@@ -342,7 +339,6 @@ class KarrasSchedule(Schedule):
 
 
 class Sampler(nn.Module):
-
     diffusion_types: List[Type[Diffusion]] = []
 
     def forward(
@@ -363,7 +359,6 @@ class Sampler(nn.Module):
 
 
 class VSampler(Sampler):
-
     diffusion_types = [VDiffusion]
 
     def get_alpha_beta(self, sigma: float) -> Tuple[float, float]:
@@ -418,7 +413,7 @@ class KarrasSampler(Sampler):
         sigma_hat = sigma + gamma * sigma
         # Add noise to move from sigma to sigma_hat
         epsilon = self.s_noise * torch.randn_like(x)
-        x_hat = x + sqrt(sigma_hat ** 2 - sigma ** 2) * epsilon
+        x_hat = x + sqrt(sigma_hat**2 - sigma**2) * epsilon
         # Evaluate ∂x/∂sigma at sigma_hat
         d = (x_hat - fn(x_hat, sigma=sigma_hat)) / sigma_hat
         # Take euler step from sigma_hat to sigma_next
@@ -450,12 +445,11 @@ class KarrasSampler(Sampler):
 
 
 class AEulerSampler(Sampler):
-
     diffusion_types = [KDiffusion, VKDiffusion]
 
     def get_sigmas(self, sigma: float, sigma_next: float) -> Tuple[float, float]:
-        sigma_up = sqrt(sigma_next ** 2 * (sigma ** 2 - sigma_next ** 2) / sigma ** 2)
-        sigma_down = sqrt(sigma_next ** 2 - sigma_up ** 2)
+        sigma_up = sqrt(sigma_next**2 * (sigma**2 - sigma_next**2) / sigma**2)
+        sigma_down = sqrt(sigma_next**2 - sigma_up**2)
         return sigma_up, sigma_down
 
     def step(self, x: Tensor, fn: Callable, sigma: float, sigma_next: float) -> Tensor:
@@ -490,8 +484,8 @@ class ADPM2Sampler(Sampler):
 
     def get_sigmas(self, sigma: float, sigma_next: float) -> Tuple[float, float, float]:
         r = self.rho
-        sigma_up = sqrt(sigma_next ** 2 * (sigma ** 2 - sigma_next ** 2) / sigma ** 2)
-        sigma_down = sqrt(sigma_next ** 2 - sigma_up ** 2)
+        sigma_up = sqrt(sigma_next**2 * (sigma**2 - sigma_next**2) / sigma**2)
+        sigma_down = sqrt(sigma_next**2 - sigma_up**2)
         sigma_mid = ((sigma ** (1 / r) + sigma_down ** (1 / r)) / 2) ** r
         return sigma_up, sigma_down, sigma_mid
 

@@ -90,5 +90,3 @@ class AudioDiffusionConditional(Model1d):
             embedding_scale=5.0,
         )
         return super().sample(*args, **{**default_kwargs, **kwargs})
-
-

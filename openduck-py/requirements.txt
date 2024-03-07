@@ -16,7 +16,6 @@ greenlet
 librosa
 munch
 nemo_text_processing
-nemo_toolkit[asr]
 nltk
 numpy
 openai

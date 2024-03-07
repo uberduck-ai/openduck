@@ -15,27 +15,28 @@ from torch import Tensor, einsum
 Utils
 """
 
+
 class AdaLayerNorm(nn.Module):
     def __init__(self, style_dim, channels, eps=1e-5):
         super().__init__()
         self.channels = channels
         self.eps = eps
 
-        self.fc = nn.Linear(style_dim, channels*2)
+        self.fc = nn.Linear(style_dim, channels * 2)
 
     def forward(self, x, s):
         x = x.transpose(-1, -2)
         x = x.transpose(1, -1)
-                
+
         h = self.fc(s)
         h = h.view(h.size(0), h.size(1), 1)
         gamma, beta = torch.chunk(h, chunks=2, dim=1)
         gamma, beta = gamma.transpose(1, -1), beta.transpose(1, -1)
-        
-        
+
         x = F.layer_norm(x, (self.channels,), eps=self.eps)
         x = (1 + gamma) * x + beta
         return x.transpose(1, -1).transpose(-1, -2)
+
 
 class StyleTransformer1d(nn.Module):
     def __init__(
@@ -80,7 +81,7 @@ class StyleTransformer1d(nn.Module):
                 kernel_size=1,
             ),
         )
-        
+
         use_context_features = exists(context_features)
         self.use_context_features = use_context_features
         self.use_context_time = use_context_time
@@ -94,7 +95,7 @@ class StyleTransformer1d(nn.Module):
                 nn.Linear(context_mapping_features, context_mapping_features),
                 nn.GELU(),
             )
-        
+
         if use_context_time:
             assert exists(context_mapping_features)
             self.to_time = nn.Sequential(
@@ -112,11 +113,10 @@ class StyleTransformer1d(nn.Module):
                 ),
                 nn.GELU(),
             )
-            
+
         self.fixed_embedding = FixedEmbedding(
             max_length=embedding_max_length, features=context_embedding_features
         )
-        
 
     def get_mapping(
         self, time: Optional[Tensor] = None, features: Optional[Tensor] = None
@@ -140,30 +140,31 @@ class StyleTransformer1d(nn.Module):
             mapping = self.to_mapping(mapping)
 
         return mapping
-            
+
     def run(self, x, time, embedding, features):
-        
         mapping = self.get_mapping(time, features)
         x = torch.cat([x.expand(-1, embedding.size(1), -1), embedding], axis=-1)
         mapping = mapping.unsqueeze(1).expand(-1, embedding.size(1), -1)
-        
+
         for block in self.blocks:
             x = x + mapping
             x = block(x, features)
-        
+
         x = x.mean(axis=1).unsqueeze(1)
         x = self.to_out(x)
         x = x.transpose(-1, -2)
-        
+
         return x
-        
-    def forward(self, x: Tensor, 
-                time: Tensor, 
-                embedding_mask_proba: float = 0.0,
-                embedding: Optional[Tensor] = None, 
-                features: Optional[Tensor] = None,
-               embedding_scale: float = 1.0) -> Tensor:
-        
+
+    def forward(
+        self,
+        x: Tensor,
+        time: Tensor,
+        embedding_mask_proba: float = 0.0,
+        embedding: Optional[Tensor] = None,
+        features: Optional[Tensor] = None,
+        embedding_scale: float = 1.0,
+    ) -> Tensor:
         b, device = embedding.shape[0], embedding.device
         fixed_embedding = self.fixed_embedding(embedding)
         if embedding_mask_proba > 0.0:
@@ -181,7 +182,7 @@ class StyleTransformer1d(nn.Module):
             return out_masked + (out - out_masked) * embedding_scale
         else:
             return self.run(x, time, embedding=embedding, features=features)
-        
+
         return x
 
 
@@ -226,12 +227,15 @@ class StyleTransformerBlock(nn.Module):
 
         self.feed_forward = FeedForward(features=features, multiplier=multiplier)
 
-    def forward(self, x: Tensor, s: Tensor, *, context: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self, x: Tensor, s: Tensor, *, context: Optional[Tensor] = None
+    ) -> Tensor:
         x = self.attention(x, s) + x
         if self.use_cross_attention:
             x = self.cross_attention(x, s, context=context) + x
         x = self.feed_forward(x) + x
         return x
+
 
 class StyleAttention(nn.Module):
     def __init__(
@@ -268,18 +272,21 @@ class StyleAttention(nn.Module):
             rel_pos_max_distance=rel_pos_max_distance,
         )
 
-    def forward(self, x: Tensor, s: Tensor, *, context: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self, x: Tensor, s: Tensor, *, context: Optional[Tensor] = None
+    ) -> Tensor:
         assert_message = "You must provide a context when using context_features"
         assert not self.context_features or exists(context), assert_message
         # Use context if provided
         context = default(context, x)
         # Normalize then compute q from input and k,v from context
         x, context = self.norm(x, s), self.norm_context(context, s)
-        
+
         q, k, v = (self.to_q(x), *torch.chunk(self.to_kv(context), chunks=2, dim=-1))
         # Compute and return attention
         return self.attention(q, k, v)
-        
+
+
 class Transformer1d(nn.Module):
     def __init__(
         self,
@@ -322,7 +329,7 @@ class Transformer1d(nn.Module):
                 kernel_size=1,
             ),
         )
-        
+
         use_context_features = exists(context_features)
         self.use_context_features = use_context_features
         self.use_context_time = use_context_time
@@ -336,7 +343,7 @@ class Transformer1d(nn.Module):
                 nn.Linear(context_mapping_features, context_mapping_features),
                 nn.GELU(),
             )
-        
+
         if use_context_time:
             assert exists(context_mapping_features)
             self.to_time = nn.Sequential(
@@ -354,11 +361,10 @@ class Transformer1d(nn.Module):
                 ),
                 nn.GELU(),
             )
-            
+
         self.fixed_embedding = FixedEmbedding(
             max_length=embedding_max_length, features=context_embedding_features
         )
-        
 
     def get_mapping(
         self, time: Optional[Tensor] = None, features: Optional[Tensor] = None
@@ -382,30 +388,31 @@ class Transformer1d(nn.Module):
             mapping = self.to_mapping(mapping)
 
         return mapping
-            
+
     def run(self, x, time, embedding, features):
-        
         mapping = self.get_mapping(time, features)
         x = torch.cat([x.expand(-1, embedding.size(1), -1), embedding], axis=-1)
         mapping = mapping.unsqueeze(1).expand(-1, embedding.size(1), -1)
-        
+
         for block in self.blocks:
             x = x + mapping
             x = block(x)
-        
+
         x = x.mean(axis=1).unsqueeze(1)
         x = self.to_out(x)
         x = x.transpose(-1, -2)
-        
+
         return x
-        
-    def forward(self, x: Tensor, 
-                time: Tensor, 
-                embedding_mask_proba: float = 0.0,
-                embedding: Optional[Tensor] = None, 
-                features: Optional[Tensor] = None,
-               embedding_scale: float = 1.0) -> Tensor:
-        
+
+    def forward(
+        self,
+        x: Tensor,
+        time: Tensor,
+        embedding_mask_proba: float = 0.0,
+        embedding: Optional[Tensor] = None,
+        features: Optional[Tensor] = None,
+        embedding_scale: float = 1.0,
+    ) -> Tensor:
         b, device = embedding.shape[0], embedding.device
         fixed_embedding = self.fixed_embedding(embedding)
         if embedding_mask_proba > 0.0:
@@ -423,7 +430,7 @@ class Transformer1d(nn.Module):
             return out_masked + (out - out_masked) * embedding_scale
         else:
             return self.run(x, time, embedding=embedding, features=features)
-        
+
         return x
 
 
@@ -503,7 +510,7 @@ class AttentionBase(nn.Module):
         rel_pos_max_distance: Optional[int] = None,
     ):
         super().__init__()
-        self.scale = head_features ** -0.5
+        self.scale = head_features**-0.5
         self.num_heads = num_heads
         self.use_rel_pos = use_rel_pos
         mid_features = head_features * num_heads
@@ -517,7 +524,7 @@ class AttentionBase(nn.Module):
             )
         if out_features is None:
             out_features = features
-            
+
         self.to_out = nn.Linear(in_features=mid_features, out_features=out_features)
 
     def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
@@ -635,7 +642,6 @@ class TransformerBlock(nn.Module):
         return x
 
 
-
 """
 Time Embeddings
 """
@@ -676,6 +682,7 @@ def TimePositionalEmbedding(dim: int, out_features: int) -> nn.Module:
         LearnedPositionalEmbedding(dim),
         nn.Linear(in_features=dim + 1, out_features=out_features),
     )
+
 
 class FixedEmbedding(nn.Module):
     def __init__(self, max_length: int, features: int):

@@ -2,8 +2,10 @@ import os
 
 HF_AUTH_TOKEN = os.environ.get("HF_AUTH_TOKEN")
 EMB_MATCH_THRESHOLD = 0.5
-WS_SAMPLE_RATE = 16000
-IS_DEV = os.environ.get("IS_DEV", "False").lower() in [
-    "true",
-    "1",
-]
+WS_SAMPLE_RATE = 16_000
+OUTPUT_SAMPLE_RATE = 24_000
+DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "dev")
+IS_DEV = DEPLOY_ENV == "dev"
+# Set to 1024 for the esp32, but larger CHUNK_SIZE is needed to prevent choppiness with the local client
+CHUNK_SIZE = 10240
+LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
