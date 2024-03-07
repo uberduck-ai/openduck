@@ -153,9 +153,7 @@ class ResponseAgent:
                 audio_chunk = np.int16(audio_chunk * 32767).tobytes()
                 return audio_chunk
 
-            loop = asyncio.get_running_loop()
-            audio_data = await loop.run_in_executor(
-                None,
+            audio_data = await asyncio.to_thread(
                 segment_audio,
                 audio_data,
                 WS_SAMPLE_RATE,
@@ -169,7 +167,7 @@ class ResponseAgent:
 
             t0 = time()
 
-            transcription = await loop.run_in_executor(None, _transcribe, audio_data)
+            transcription = await asyncio.to_thread(_transcribe, audio_data)
             print("TRANSCRIPTION: ", transcription)
             await log_event(
                 db, self.session_id, "transcribed_audio", meta={"text": transcription}
@@ -246,11 +244,7 @@ class ResponseAgent:
             t_normalize = time()
             sentences = re.split(r"(?<=[.!?]) +", normalized)
             for sentence in sentences:
-                audio_chunk_bytes = await loop.run_in_executor(
-                    None,
-                    _inference,
-                    sentence,
-                )
+                audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
                 await log_event(
                     db,
                     self.session_id,
