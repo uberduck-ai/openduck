@@ -336,7 +336,7 @@ async def audio_response(
     response_task = None
     try:
         while True:
-            if time() - time_of_last_activity > 30:
+            if time() - time_of_last_activity > 300:
                 print("closing websocket due to inactivity")
                 break
             if _check_for_exceptions(response_task):
