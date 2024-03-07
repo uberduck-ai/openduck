@@ -184,12 +184,10 @@ class ResponseAgent:
             classification_response_message = classification_response.choices[
                 0
             ].message.content
-            if (
-                classification_response_message == "stop"
-                or not transcription
-                or len(audio_data) < 100
-            ):
-                await self.response_queue.put(None)  # Signal to stop
+            if classification_response_message == "stop":
+                await self.response_queue.put(None)  # Signal to stop the conversation
+                return
+            if not transcription or len(audio_data) < 100:
                 return
 
             system_prompt = {
