@@ -7,7 +7,6 @@ from sqlalchemy import (
     Integer,
     Text,
 )
-from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.ext.mutable import MutableDict
 
