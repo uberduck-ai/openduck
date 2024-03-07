@@ -126,17 +126,78 @@ class SileroVad:
 
 
 class ResponseAgent:
-    def __init__(self, session_id: str, output_sample_rate=24_000):
+    def __init__(
+        self,
+        session_id: str,
+        input_audio_format: Literal["float32", "int32", "int16"] = "float32",
+        record=False,
+    ):
         self.session_id = session_id
-        self.output_sample_rate = output_sample_rate
         self.response_queue = asyncio.Queue()
         self.is_responding = False
+        self.input_audio_format = input_audio_format
+        self.audio_data = []
+        self.recorder = WavAppender(wav_file_path=f"{session_id}.wav")
+        self.vad = SileroVad()
+        self.record = record
+        self.time_of_last_activity = time()
+        self.response_task = None
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
         print("interrupting!")
         task.cancel()
         self.is_responding = False
+
+    async def receive_audio(self, message: np.ndarray):
+        if self.input_audio_format == "float32":
+            audio_16k_np = np.frombuffer(message, dtype=np.float32)
+        elif self.input_audio_format == "int32":
+            audio_16k_np = np.frombuffer(message, dtype=np.int32)
+            audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int32).max
+            audio_16k_np = audio_16k_np.astype(np.float32)
+        elif self.input_audio_format == "int16":
+            audio_16k_np = np.frombuffer(message, dtype=np.int16)
+            audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int16).max
+            audio_16k_np = audio_16k_np.astype(np.float32)
+
+        audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
+        self.audio_data.append(audio_16k_np)
+        if self.record:
+            self.recorder.append(audio_16k_np)
+        i = 0
+        while i < len(audio_16k):
+            upper = i + self.vad.window_size
+            if len(audio_16k) - self.vad.window_size < upper:
+                upper = len(audio_16k)
+            audio_16k_chunk = audio_16k[i:upper]
+            vad_result = self.vad(audio_16k_chunk)
+            if vad_result:
+                # TODO (Matthew): Can we send telemetry via an API instead of saving to a database?
+                async with SessionAsync() as db:
+                    if "end" in vad_result:
+                        print("end of speech detected.")
+                        self.time_of_last_activity = time()
+                        await log_event(db, self.session_id, "detected_end_of_speech")
+                        if self.response_task is None or self.response_task.done():
+                            self.response_task = asyncio.create_task(
+                                self.start_response(
+                                    np.concatenate(self.audio_data),
+                                )
+                            )
+                        else:
+                            print("already responding")
+                    if "start" in vad_result:
+                        print("start of speech detected.")
+                        self.time_of_last_activity = time()
+                        await log_event(db, self.session_id, "detected_start_of_speech")
+                        if self.response_task and not self.response_task.done():
+                            if self.is_responding:
+                                await log_event(
+                                    db, self.session_id, "interrupted_response"
+                                )
+                                self.interrupt(self.response_task)
+            i = upper
 
     async def start_response(
         self,
@@ -150,7 +211,7 @@ class ResponseAgent:
             def _inference(sentence: str):
                 audio_chunk = styletts2_inference(
                     text=sentence,
-                    output_sample_rate=self.output_sample_rate,
+                    output_sample_rate=OUTPUT_SAMPLE_RATE,
                 )
                 audio_chunk = np.int16(audio_chunk * 32767).tobytes()
                 return audio_chunk
@@ -317,86 +378,33 @@ async def audio_response(
     websocket: WebSocket,
     session_id: str,
     record: bool = False,
-    input_audio_format: Literal["float32", "int32", "int16"] = "float32",
-    output_sample_rate: int = OUTPUT_SAMPLE_RATE,
     db: AsyncSession = Depends(get_db_async),
 ):
     await websocket.accept()
-    time_of_last_activity = time()
 
-    vad = SileroVad()
-    responder = ResponseAgent(
-        session_id=session_id,
-        output_sample_rate=output_sample_rate,
-    )
-    recorder = WavAppender(wav_file_path=f"{session_id}.wav")
-
-    audio_data = []
-    response_task = None
-    consumer_task = asyncio.create_task(consumer(responder.response_queue, websocket))
+    responder = ResponseAgent(session_id=session_id, record=record)
+    asyncio.create_task(consumer(responder.response_queue, websocket))
 
     try:
         while True:
-            if time() - time_of_last_activity > 300:
+            if time() - responder.time_of_last_activity > 300:
                 print("closing websocket due to inactivity")
                 break
-            if _check_for_exceptions(response_task):
-                audio_data = []
-                response_task = None
-                time_of_last_activity = time()
+            if _check_for_exceptions(responder.response_task):
+                responder.audio_data = []
+                responder.response_task = None
+                responder.time_of_last_activity = time()
             try:
                 message = await websocket.receive_bytes()
+                await responder.receive_audio(message)
 
             except WebSocketDisconnect:
                 print("websocket disconnected")
                 return
-            if input_audio_format == "float32":
-                audio_16k_np = np.frombuffer(message, dtype=np.float32)
-            elif input_audio_format == "int32":
-                audio_16k_np = np.frombuffer(message, dtype=np.int32)
-                audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int32).max
-                audio_16k_np = audio_16k_np.astype(np.float32)
-            elif input_audio_format == "int16":
-                audio_16k_np = np.frombuffer(message, dtype=np.int16)
-                audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int16).max
-                audio_16k_np = audio_16k_np.astype(np.float32)
 
-            audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
-            audio_data.append(audio_16k_np)
-            if record:
-                recorder.append(audio_16k_np)
-            i = 0
-            while i < len(audio_16k):
-                upper = i + vad.window_size
-                if len(audio_16k) - vad.window_size < upper:
-                    upper = len(audio_16k)
-                audio_16k_chunk = audio_16k[i:upper]
-                vad_result = vad(audio_16k_chunk)
-                if vad_result:
-                    if "end" in vad_result:
-                        print("end of speech detected.")
-                        time_of_last_activity = time()
-                        await log_event(db, session_id, "detected_end_of_speech")
-                        if response_task is None or response_task.done():
-                            response_task = asyncio.create_task(
-                                responder.start_response(
-                                    np.concatenate(audio_data),
-                                )
-                            )
-                        else:
-                            print("already responding")
-                    if "start" in vad_result:
-                        print("start of speech detected.")
-                        time_of_last_activity = time()
-                        await log_event(db, session_id, "detected_start_of_speech")
-                        if response_task and not response_task.done():
-                            if responder.is_responding:
-                                await log_event(db, session_id, "interrupted_response")
-                                responder.interrupt(response_task)
-                i = upper
     finally:
-        recorder.close_file()
-        recorder.log()
+        responder.recorder.close_file()
+        responder.recorder.log()
 
     await responder.response_queue.join()
     await websocket.close()
