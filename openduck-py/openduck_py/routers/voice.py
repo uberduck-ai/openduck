@@ -7,13 +7,6 @@ import wave
 import requests
 from pathlib import Path
 
-# NOTE(zach): On Mac OS, the first import fails, but the subsequent one
-# succeeds. /shrug.
-try:
-    import nemo.collections.asr.models as asr_models
-except OSError:
-    import nemo.collections.asr.models as asr_models
-
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
 from scipy.io import wavfile
