@@ -7,8 +7,6 @@ fastapi
 Flask 
 Flask-Admin 
 Flask-SQLAlchemy
-google-cloud-texttospeech
-greenlet
 librosa
 munch
 nemo_text_processing
@@ -17,7 +15,6 @@ numpy
 openai
 openai-whisper
 phonemizer
-propelauth_fastapi
 pyannote.core
 pyannote.audio
 pylru
