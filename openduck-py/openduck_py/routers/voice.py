@@ -131,8 +131,10 @@ class ResponseAgent:
         session_id: str,
         input_audio_format: Literal["float32", "int32", "int16"] = "float32",
         record=False,
+        user_id=None,
     ):
         self.session_id = session_id
+        self.user_id = user_id
         self.response_queue = asyncio.Queue()
         self.is_responding = False
         self.input_audio_format = input_audio_format
@@ -235,27 +237,46 @@ class ResponseAgent:
             await log_event(
                 db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
-            classify_prompt = prompt("intent-classification")
+            classify_prompt = prompt(
+                "response-classification", {"transcription": transcription}
+            )
             classification_response = await generate(
                 template=classify_prompt,
-                variables={"transcription": transcription},
                 model="gpt-35-turbo-deployment",
                 role="user",
             )
+
             classification_response_message = classification_response.choices[
                 0
             ].message.content
-            if classification_response_message == "stop":
+            print(
+                "classification response is",
+                classification_response_message,
+                "\n\n\n\n",
+            )
+            if classification_response_message["intent"] == "stop":
                 await self.response_queue.put(None)  # Signal to stop the conversation
                 return
+            if classification_response_message["content"]["name"] is not None:
+                name = classification_response_message["content"]["name"]
+                from openduck_py.models.user import DBUser
+
+                db_user = db.execute(DBUser.get(id=self.user_id)).scalar_one_or_none()
+                db_user.meta_json["name"] = name
+                await db.commit()
+
             if not transcription or len(audio_data) < 100:
                 return
 
             system_prompt = {
                 "role": "system",
-                "content": prompt("system-prompt"),
+                "content": prompt("system-prompt", {"name": name}),
             }
-            new_message = {"role": "user", "content": transcription}
+            name = db_user.meta_json["name"]
+            new_message = {
+                "role": "user",
+                "content": transcription,
+            }
 
             chat = (
                 await db.execute(
@@ -270,6 +291,7 @@ class ResponseAgent:
                     history_json={"messages": [system_prompt]},
                 )
                 db.add(chat)
+
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
@@ -379,10 +401,11 @@ async def audio_response(
     session_id: str,
     record: bool = False,
     db: AsyncSession = Depends(get_db_async),
+    user: Optional[str] = None,
 ):
     await websocket.accept()
 
-    responder = ResponseAgent(session_id=session_id, record=record)
+    responder = ResponseAgent(session_id=session_id, record=record, user_id=user.id)
     asyncio.create_task(consumer(responder.response_queue, websocket))
 
     try:
