@@ -5,8 +5,10 @@ from typing import Dict, List
 import torch
 import numpy as np
 from scipy.spatial.distance import cdist
+
 from pyannote.core import Segment
 from pyannote.audio import Pipeline, Inference, Model
+
 
 from openduck_py.settings import HF_AUTH_TOKEN, EMB_MATCH_THRESHOLD
 
