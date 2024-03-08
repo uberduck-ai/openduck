@@ -1,3 +1,4 @@
+import os
 import tempfile
 import re
 import yaml
@@ -221,14 +222,21 @@ model_params = load_object_from_s3(
 )["model_params"]
 cache = pylru.lrucache(1)
 
-asr_config = load_config("models/asr_config.yml")
-plbert_config = load_config("models/plbert_config.yml")
 
-text_aligner = load_asr_models("models/text_aligner.pth", asr_config)
-pitch_extractor = load_f0_models("models/pitch_extractor.t7")
-plbert = load_plbert(plbert_config, "models/plbert.t7")
+models_prefix = os.path.join(os.path.dirname(__file__), "../..")
+
+asr_config = load_config(os.path.join(models_prefix, "models/asr_config.yml"))
+plbert_config = load_config(os.path.join(models_prefix, "models/plbert_config.yml"))
+
+text_aligner = load_asr_models(
+    os.path.join(models_prefix, "models/text_aligner.pth"), asr_config
+)
+pitch_extractor = load_f0_models(
+    os.path.join(models_prefix, "models/pitch_extractor.t7")
+)
+plbert = load_plbert(plbert_config, os.path.join(models_prefix, "models/plbert.t7"))
 model, sampler = load_model(
-    model_path="models/cartoon-boy-upbeat.pth",
+    model_path=os.path.join(models_prefix, "models/cartoon-boy-upbeat.pth"),
     text_aligner=text_aligner,
     pitch_extractor=pitch_extractor,
     plbert=plbert,
