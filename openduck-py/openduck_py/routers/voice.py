@@ -55,7 +55,7 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
     )
 
 speaker_embedding = inference("aec-cartoon-degraded.wav")
-whisper_model = load_model("tiny.en")
+whisper_model = load_model("base.en")
 
 audio_router = APIRouter(prefix="/audio")
 
