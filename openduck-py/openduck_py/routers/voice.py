@@ -468,4 +468,4 @@ async def connect_daily():
 
 
 if __name__ == "__main__":
-    connect_daily()
+    asyncio.run(connect_daily())
