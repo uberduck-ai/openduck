@@ -13,6 +13,7 @@ import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
+import torchaudio
 from whisper import load_model
 from daily import *
 
@@ -167,6 +168,7 @@ class ResponseAgent:
             audio_16k_np = audio_16k_np.astype(np.float32)
 
         audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
+
         self.audio_data.append(audio_16k_np)
         if self.record:
             self.recorder.append(audio_16k_np)
@@ -425,6 +427,7 @@ async def audio_response(
 
 async def connect_daily():
     session_id = str(uuid4())
+
     Daily.init()
     mic = Daily.create_microphone_device(
         "my-mic", sample_rate=OUTPUT_SAMPLE_RATE, channels=1, non_blocking=True
@@ -434,6 +437,9 @@ async def connect_daily():
     )
     Daily.select_speaker_device("my-speaker")
     client = CallClient()
+    client.update_subscription_profiles(
+        {"base": {"camera": "unsubscribed", "microphone": "subscribed"}}
+    )
     client.join(
         meeting_url="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
         client_settings={
@@ -450,16 +456,20 @@ async def connect_daily():
             }
         },
     )
-    responder = ResponseAgent(session_id=session_id, record=True)
-    asyncio.create_task(consumer(responder.response_queue, mic))
+    responder = ResponseAgent(
+        session_id=session_id, record=False, input_audio_format="int16"
+    )
+    asyncio.create_task(daily_consumer(responder.response_queue, mic))
     while True:
         if _check_for_exceptions(responder.response_task):
             responder.audio_data = []
             responder.response_task = None
             responder.time_of_last_activity = time()
 
-        message = speaker.read_frames(CHUNK_SIZE)
-        await responder.receive_audio(message)
+        message = speaker.read_frames(WS_SAMPLE_RATE // 10)
+        if len(message) > 0:
+            await responder.receive_audio(message)
+        await asyncio.sleep(0.01)
 
     responder.recorder.close_file()
     responder.recorder.log()

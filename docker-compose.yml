@@ -4,7 +4,7 @@ services:
     image: 613148481050.dkr.ecr.us-west-2.amazonaws.com/openduck:latest
     build: .
     # command: bash -c "python setup.py develop && aws s3 sync s3://uberduck-models-us-west-2/prototype/styletts2 models && uvicorn openduck_py.routers.main:app --reload --host 0.0.0.0 --port 8000"
-    command: bash -c "python setup.py develop && aws s3 sync s3://uberduck-models-us-west-2/prototype/styletts2 models && python openduck_py/routers/voice.py"
+    command: bash -c "python setup.py develop && mkdir -p models/styletts2 && aws s3 sync s3://uberduck-models-us-west-2/prototype/styletts2 models/styletts2 && python openduck_py/routers/voice.py"
     working_dir: /openduck-py/openduck-py
     volumes:
       - .:/openduck-py
