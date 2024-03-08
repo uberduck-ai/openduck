@@ -14,7 +14,7 @@ from sqlalchemy import select
 import torch
 from whisper import load_model
 
-from openduck_py.models import DBChatHistory, DBChatRecord
+from openduck_py.models import DBChatHistory, DBChatRecord, DBUser
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
@@ -259,7 +259,6 @@ class ResponseAgent:
                 return
             if classification_response_message["content"]["name"] is not None:
                 name = classification_response_message["content"]["name"]
-                from openduck_py.models.user import DBUser
 
                 db_user = db.execute(DBUser.get(id=self.user_id)).scalar_one_or_none()
                 db_user.meta_json["name"] = name
@@ -273,6 +272,7 @@ class ResponseAgent:
                 "content": prompt("system-prompt", {"name": name}),
             }
             name = db_user.meta_json["name"]
+            print("name \n\n\n", name)
             new_message = {
                 "role": "user",
                 "content": transcription,
