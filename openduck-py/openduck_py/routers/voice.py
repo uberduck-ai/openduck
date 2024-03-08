@@ -42,7 +42,10 @@ else:
     normalize_text = normalizer.normalize
 
 
-pipeline, inference = load_pipelines()
+try:
+    pipeline, inference = load_pipelines()
+except OSError:
+    pipeline, inference = load_pipelines()
 
 with open("aec-cartoon-degraded.wav", "wb") as f:
     f.write(
