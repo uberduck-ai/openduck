@@ -43,16 +43,14 @@ async def open_ai_chat_continuation(
 
 
 async def generate(
-    template: str,
-    variables: Dict[str, Any],
+    prompt: str,
     model: ModelLiteral,
     role="user",
 ) -> GenerationResponse:
-    jinja_template = jinja2.Template(template)
 
-    prompt = [{"content": jinja_template.render(variables), "role": role}]
+    messages = [{"content": prompt, "role": role}]
 
     response = await client.chat.completions.create(
-        model=model or DEFAULT_MODEL, messages=prompt, temperature=0.3
+        model=model or DEFAULT_MODEL, messages=messages, temperature=0.3
     )
     return response

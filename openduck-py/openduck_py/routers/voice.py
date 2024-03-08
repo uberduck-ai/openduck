@@ -408,7 +408,8 @@ async def audio_response(
 ):
     await websocket.accept()
 
-    responder = ResponseAgent(session_id=session_id, record=record, user_id=user.id)
+    user_id = user.id if user else None
+    responder = ResponseAgent(session_id=session_id, record=record, user_id=user_id)
     asyncio.create_task(consumer(responder.response_queue, websocket))
 
     try:
