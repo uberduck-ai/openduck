@@ -11,6 +11,8 @@ MIC_SAMPLE_RATE = 16000
 NUM_CHANNELS = 1
 MEETING = "https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug"
 
+stop_event = threading.Event()
+
 
 class PyAudioApp:
 
@@ -94,6 +96,7 @@ class PyAudioApp:
         # This is not very pretty (taken from PyAudio docs).
         while self.__input_stream.is_active():
             time.sleep(0.1)
+            print("sleeing")
         self.__input_stream.close()
         self.__pyaudio.terminate()
 
@@ -127,6 +130,8 @@ def play_audio():
         output=True,
     )
     while True:
+        if stop_event.is_set():
+            break
         if not play_queue.empty():
             data = play_queue.get()
             stream.write(data)
@@ -141,8 +146,9 @@ def main():
         app.run(MEETING)
     except KeyboardInterrupt:
         print("Ctrl-C detected. Exiting!")
-    finally:
         app.leave()
+        stop_event.set()
+        raise
 
 
 if __name__ == "__main__":
