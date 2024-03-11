@@ -375,8 +375,9 @@ async def log_event(
 async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
     while True:
         chunk = await queue.get()  # Dequeue a chunk
-        mic.write_frames(chunk)
-        queue.task_done()
+        if chunk:
+            mic.write_frames(chunk)
+            queue.task_done()
 
 
 async def consumer(queue: asyncio.Queue, websocket: WebSocket):
