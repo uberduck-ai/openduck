@@ -129,9 +129,7 @@ def play_audio():
         rate=SPEAKER_SAMPLE_RATE,
         output=True,
     )
-    while True:
-        if stop_event.is_set():
-            break
+    while not stop_event.is_set():
         if not play_queue.empty():
             data = play_queue.get()
             stream.write(data)
