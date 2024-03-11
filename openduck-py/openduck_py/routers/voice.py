@@ -375,16 +375,18 @@ async def log_event(
 async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
     while True:
         chunk = await queue.get()  # Dequeue a chunk
-        mic.write_frames(chunk)
-        queue.task_done()
+        if chunk:
+            mic.write_frames(chunk)
+            queue.task_done()
 
 
 async def consumer(queue: asyncio.Queue, websocket: WebSocket):
     """Dequeue audio chunks and send them through the websocket."""
     while True:
         chunk = await queue.get()  # Dequeue a chunk
-        await websocket.send_bytes(chunk)  # Send the chunk through the websocket
-        queue.task_done()
+        if chunk:
+            await websocket.send_bytes(chunk)  # Send the chunk through the websocket
+            queue.task_done()
 
 
 @audio_router.websocket("/response")
