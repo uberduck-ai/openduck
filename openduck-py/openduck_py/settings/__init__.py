@@ -9,3 +9,5 @@ IS_DEV = DEPLOY_ENV == "dev"
 # Set to 1024 for the esp32, but larger CHUNK_SIZE is needed to prevent choppiness with the local client
 CHUNK_SIZE = 10240
 LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
+CHAT_MODEL = "azure/gpt-35-turbo-deployment"
+UTILITY_MODEL = "azure/gpt-35-turbo-deployment"

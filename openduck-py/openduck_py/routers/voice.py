@@ -28,8 +28,10 @@ from openduck_py.settings import (
     OUTPUT_SAMPLE_RATE,
     CHUNK_SIZE,
     LOG_TO_SLACK,
+    CHAT_MODEL,
+    UTILITY_MODEL,
 )
-from openduck_py.routers.templates import generate, open_ai_chat_continuation
+from openduck_py.routers.templates import generate, chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
@@ -246,7 +248,7 @@ class ResponseAgent:
             classification_response = await generate(
                 template=classify_prompt,
                 variables={"transcription": transcription},
-                model="gpt-35-turbo-deployment",
+                model=UTILITY_MODEL,
                 role="user",
             )
             classification_response_message = classification_response.choices[
@@ -280,15 +282,13 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await open_ai_chat_continuation(
-                messages, "gpt-35-turbo-deployment"
-            )
+            response = await chat_continuation(messages)
             response_message = response.choices[0].message
             completion = response_message.content
             await log_event(
                 db, self.session_id, "generated_completion", meta={"text": completion}
             )
-            t_gpt = time()
+            t_chat = time()
             print(
                 f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
             )
@@ -323,8 +323,8 @@ class ResponseAgent:
             t_styletts = time()
 
             print("Whisper", t_whisper - t0)
-            print("GPT", t_gpt - t_whisper)
-            print("Normalizer", t_normalize - t_gpt)
+            print(CHAT_MODEL, t_chat - t_whisper)
+            print("Normalizer", t_normalize - t_chat)
             print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
 
 
