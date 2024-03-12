@@ -1,48 +1,72 @@
 import asyncio
 import os
 import re
-from tempfile import NamedTemporaryFile
 from time import time
-from typing import Optional
+from typing import Optional, Dict, Literal
 import wave
-
-# NOTE(zach): On Mac OS, the first import fails, but the subsequent one
-# succeeds. /shrug.
-try:
-    import nemo.collections.asr.models as asr_models
-except OSError:
-    import nemo.collections.asr.models as asr_models
-
+import requests
+from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from nemo_text_processing.text_normalization.normalize import Normalizer
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
-from torchaudio.functional import resample
+import torchaudio
+from whisper import load_model
+from daily import *
 
-from openduck_py.models import DBChatHistory
-from openduck_py.db import get_db_async, AsyncSession
+from openduck_py.models import DBChatHistory, DBChatRecord
+from openduck_py.models.chat_record import EventName
+from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.voices import styletts2
-from openduck_py.routers.templates import generate
-
-asr_model = asr_models.EncDecCTCModelBPE.from_pretrained(
-    model_name="nvidia/stt_en_fastconformer_ctc_large"
+from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
+from openduck_py.settings import (
+    IS_DEV,
+    WS_SAMPLE_RATE,
+    OUTPUT_SAMPLE_RATE,
+    CHUNK_SIZE,
+    LOG_TO_SLACK,
+    CHAT_MODEL,
+    UTILITY_MODEL,
 )
-normalizer = Normalizer(input_case="cased", lang="en")
+from openduck_py.routers.templates import generate, chat_continuation
+from openduck_py.utils.speaker_identification import (
+    segment_audio,
+    load_pipelines,
+)
+from openduck_py.logging.slack import log_audio_to_slack
+
+if IS_DEV:
+    normalize_text = lambda x: x
+else:
+    from nemo_text_processing.text_normalization.normalize import Normalizer
+
+    normalizer = Normalizer(input_case="cased", lang="en")
+    normalize_text = normalizer.normalize
+
+
+try:
+    pipeline, inference = load_pipelines()
+except OSError:
+    pipeline, inference = load_pipelines()
+
+with open("aec-cartoon-degraded.wav", "wb") as f:
+    f.write(
+        requests.get(
+            "https://s3.us-west-2.amazonaws.com/quack.uberduck.ai/aec-cartoon-degraded.wav"
+        ).content
+    )
+
+speaker_embedding = inference("aec-cartoon-degraded.wav")
+whisper_model = load_model("base.en")
 
 audio_router = APIRouter(prefix="/audio")
 
 
 def _transcribe(audio_data):
-    with NamedTemporaryFile(suffix=".wav", mode="wb+") as temp_file:
-        wavfile.write(temp_file.name, 16000, audio_data)
-        temp_file.flush()
-        temp_file.seek(0)
-        transcription = asr_model.transcribe([temp_file.name])[0]
-    return transcription
+    return whisper_model.transcribe(audio_data)["text"]
 
 
 class WavAppender:
@@ -66,7 +90,7 @@ class WavAppender:
         if not self.params_set:
             self.file.setnchannels(1)  # Mono
             self.file.setsampwidth(2)  # 16 bits
-            self.file.setframerate(16000)  # 16kHz
+            self.file.setframerate(WS_SAMPLE_RATE)
             self.params_set = True
         self.file.writeframes(audio_data.tobytes())
 
@@ -75,6 +99,10 @@ class WavAppender:
             self.file.close()
             self.file = None
             self.params_set = False
+
+    def log(self):
+        if LOG_TO_SLACK:
+            log_audio_to_slack(self.wav_file_path)
 
 
 class SileroVad:
@@ -106,100 +134,198 @@ class SileroVad:
 
 
 class ResponseAgent:
-    is_responding = False
+    def __init__(
+        self,
+        session_id: str,
+        input_audio_format: Literal["float32", "int32", "int16"] = "float32",
+        record=False,
+    ):
+        self.session_id = session_id
+        self.response_queue = asyncio.Queue()
+        self.is_responding = False
+        self.input_audio_format = input_audio_format
+        self.audio_data = []
+        self.recorder = WavAppender(wav_file_path=f"{session_id}.wav")
+        self.vad = SileroVad()
+        self.record = record
+        self.time_of_last_activity = time()
+        self.response_task = None
 
     def interrupt(self, task: asyncio.Task):
-        if self.is_responding:
-            print("interrupting!")
-            task.cancel()
-            self.is_responding = False
-        else:
-            print("not responding, no need to interrupt.")
+        assert self.is_responding
+        print("interrupting!")
+        task.cancel()
+        self.is_responding = False
+
+    async def receive_audio(self, message: np.ndarray):
+        if self.input_audio_format == "float32":
+            audio_16k_np = np.frombuffer(message, dtype=np.float32)
+        elif self.input_audio_format == "int32":
+            audio_16k_np = np.frombuffer(message, dtype=np.int32)
+            audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int32).max
+            audio_16k_np = audio_16k_np.astype(np.float32)
+        elif self.input_audio_format == "int16":
+            audio_16k_np = np.frombuffer(message, dtype=np.int16)
+            audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int16).max
+            audio_16k_np = audio_16k_np.astype(np.float32)
+
+        audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
+
+        self.audio_data.append(audio_16k_np)
+        if self.record:
+            self.recorder.append(audio_16k_np)
+        i = 0
+        while i < len(audio_16k):
+            upper = i + self.vad.window_size
+            if len(audio_16k) - self.vad.window_size < upper:
+                upper = len(audio_16k)
+            audio_16k_chunk = audio_16k[i:upper]
+            vad_result = self.vad(audio_16k_chunk)
+            if vad_result:
+                # TODO (Matthew): Can we send telemetry via an API instead of saving to a database?
+                async with SessionAsync() as db:
+                    if "end" in vad_result:
+                        print("end of speech detected.")
+                        self.time_of_last_activity = time()
+                        await log_event(db, self.session_id, "detected_end_of_speech")
+                        if self.response_task is None or self.response_task.done():
+                            self.response_task = asyncio.create_task(
+                                self.start_response(
+                                    np.concatenate(self.audio_data),
+                                )
+                            )
+                        else:
+                            print("already responding")
+                    if "start" in vad_result:
+                        print("start of speech detected.")
+                        self.time_of_last_activity = time()
+                        await log_event(db, self.session_id, "detected_start_of_speech")
+                        if self.response_task and not self.response_task.done():
+                            if self.is_responding:
+                                await log_event(
+                                    db, self.session_id, "interrupted_response"
+                                )
+                                self.interrupt(self.response_task)
+            i = upper
 
     async def start_response(
         self,
-        websocket: WebSocket,
-        db: AsyncSession,
         audio_data: np.ndarray,
-        session_id: str,
     ):
-        print("starting response")
         self.is_responding = True
+        async with SessionAsync() as db:
+            await log_event(db, self.session_id, "started_response", audio=audio_data)
+            t0 = time()
 
-        def _inference(sentence: str):
-            audio_chunk = styletts2.styletts2_inference(text=sentence)
-            audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
-            return audio_chunk_bytes
+            def _inference(sentence: str):
+                audio_chunk = styletts2_inference(
+                    text=sentence,
+                    output_sample_rate=OUTPUT_SAMPLE_RATE,
+                )
+                audio_chunk = np.int16(audio_chunk * 32767).tobytes()
+                return audio_chunk
 
-        loop = asyncio.get_running_loop()
-
-        t0 = time()
-
-        print("RUNNING TRANSCRIBE IN EXECUTOR")
-        transcription = await loop.run_in_executor(None, _transcribe, audio_data)
-        print("transcription", transcription)
-
-        if not transcription:
-            return
-
-        t_whisper = time()
-
-        system_prompt = {
-            "role": "system",
-            "content": prompt("system-prompt"),
-        }
-        new_message = {"role": "user", "content": transcription}
-
-        chat = (
-            await db.execute(
-                select(DBChatHistory).where(DBChatHistory.session_id == session_id)
+            # Remove echo
+            audio_data = await asyncio.to_thread(
+                segment_audio,
+                audio_data,
+                WS_SAMPLE_RATE,
+                speaker_embedding,
+                pipeline,
+                inference,
             )
-        ).scalar_one_or_none()
-        if chat is None:
-            chat = DBChatHistory(
-                session_id=session_id, history_json={"messages": [system_prompt]}
+            await log_event(db, self.session_id, "removed_echo", audio=audio_data)
+
+            # TODO: timestamp for echo removal
+
+            transcription = await asyncio.to_thread(_transcribe, audio_data)
+            print("TRANSCRIPTION: ", transcription)
+            t_whisper = time()
+            await log_event(
+                db, self.session_id, "transcribed_audio", meta={"text": transcription}
             )
-            db.add(chat)
-        messages = chat.history_json["messages"]
-        messages.append(new_message)
-        response = await generate({"messages": messages}, [], "gpt-35-turbo-deployment")
+            classify_prompt = prompt("intent-classification")
+            classification_response = await generate(
+                template=classify_prompt,
+                variables={"transcription": transcription},
+                model=UTILITY_MODEL,
+                role="user",
+            )
+            classification_response_message = classification_response.choices[
+                0
+            ].message.content
+            if classification_response_message == "stop":
+                await self.response_queue.put(None)  # Signal to stop the conversation
+                return
+            if not transcription or len(audio_data) < 100:
+                return
 
-        t_gpt = time()
+            system_prompt = {
+                "role": "system",
+                "content": prompt("system-prompt"),
+            }
+            new_message = {"role": "user", "content": transcription}
 
-        response_message = response.choices[0].message
+            chat = (
+                await db.execute(
+                    select(DBChatHistory).where(
+                        DBChatHistory.session_id == self.session_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if chat is None:
+                chat = DBChatHistory(
+                    session_id=self.session_id,
+                    history_json={"messages": [system_prompt]},
+                )
+                db.add(chat)
+            messages = chat.history_json["messages"]
+            messages.append(new_message)
 
-        if "$ECHO" in response_message.content:
-            print("Echo detected, not sending response.")
-            return
+            response = await chat_continuation(messages)
+            response_message = response.choices[0].message
+            completion = response_message.content
+            await log_event(
+                db, self.session_id, "generated_completion", meta={"text": completion}
+            )
+            t_chat = time()
+            print(
+                f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+            )
 
-        messages.append(
-            {"role": response_message.role, "content": response_message.content}
-        )
-        chat.history_json["messages"] = messages
-        await db.commit()
+            if "$ECHO" in completion:
+                print("Echo detected, not sending response.")
+                return
 
-        def normalize_text(text):
-            normalized_text = normalizer.normalize(text)
-            print("Original response:", text)
-            print("Normalized response:", normalized_text)
-            return normalized_text
+            messages.append({"role": response_message.role, "content": completion})
+            chat.history_json["messages"] = messages
+            await db.commit()
 
-        normalized = normalize_text(response_message.content)
-        t_normalize = time()
-        sentences = re.split(r"(?<=[.!?]) +", normalized)
-        for sentence in sentences:
-            print("RUNNING TTS IN EXECUTOR")
-            audio_chunk_bytes = await loop.run_in_executor(None, _inference, sentence)
-            print("DONE RUNNING IN EXECUTOR")
-            await websocket.send_bytes(audio_chunk_bytes)
-            print("DONE SENDING BYTES")
+            normalized = normalize_text(response_message.content)
+            await log_event(
+                db, self.session_id, "normalized_text", meta={"text": normalized}
+            )
+            t_normalize = time()
+            sentences = re.split(r"(?<=[.!?]) +", normalized)
+            for sentence in sentences:
+                audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
+                await log_event(
+                    db,
+                    self.session_id,
+                    "generated_tts",
+                    audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+                )
 
-        t_styletts = time()
+                for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
+                    chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
+                    await self.response_queue.put(chunk)
 
-        print("Fastconformer", t_whisper - t0)
-        print("GPT", t_gpt - t_whisper)
-        print("Normalizer", t_normalize - t_gpt)
-        print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
+            t_styletts = time()
+
+            print("Whisper", t_whisper - t0)
+            print(CHAT_MODEL, t_chat - t_whisper)
+            print("Normalizer", t_normalize - t_chat)
+            print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
@@ -216,7 +342,51 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
                 "response task completed successfully. Resetting audio_data and response_task"
             )
             reset_state = True
+
         return reset_state
+
+
+async def log_event(
+    db: AsyncSession,
+    session_id: str,
+    event: EventName,
+    meta: Optional[Dict[str, str]] = None,
+    audio: Optional[np.ndarray] = None,
+):
+    if audio is not None:
+        log_path = f"logs/{session_id}/{event}_{time()}.wav"
+        abs_path = Path(__file__).resolve().parents[2] / log_path
+        session_folder = abs_path.parent
+        if not os.path.exists(session_folder):
+            os.makedirs(session_folder)
+
+        sample_rate = WS_SAMPLE_RATE
+        if event == "generated_tts":
+            sample_rate = STYLETTS2_SAMPLE_RATE
+        wavfile.write(abs_path, sample_rate, audio)
+        print(f"Wrote wavfile to {abs_path}")
+
+        meta = {"audio_url": log_path}
+    record = DBChatRecord(session_id=session_id, event_name=event, meta_json=meta)
+    db.add(record)
+    await db.commit()
+
+
+async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
+    while True:
+        chunk = await queue.get()  # Dequeue a chunk
+        if chunk:
+            mic.write_frames(chunk)
+            queue.task_done()
+
+
+async def consumer(queue: asyncio.Queue, websocket: WebSocket):
+    """Dequeue audio chunks and send them through the websocket."""
+    while True:
+        chunk = await queue.get()  # Dequeue a chunk
+        if chunk:
+            await websocket.send_bytes(chunk)  # Send the chunk through the websocket
+            queue.task_done()
 
 
 @audio_router.websocket("/response")
@@ -228,69 +398,86 @@ async def audio_response(
 ):
     await websocket.accept()
 
-    vad = SileroVad()
-    responder = ResponseAgent()
-    recorder = WavAppender(wav_file_path=f"{session_id}.wav")
+    responder = ResponseAgent(session_id=session_id, record=record)
+    asyncio.create_task(consumer(responder.response_queue, websocket))
 
-    audio_data = []
-    response_task = None
     try:
         while True:
-            if _check_for_exceptions(response_task):
-                audio_data = []
-                response_task = None
+            if time() - responder.time_of_last_activity > 300:
+                print("closing websocket due to inactivity")
+                break
+            if _check_for_exceptions(responder.response_task):
+                responder.audio_data = []
+                responder.response_task = None
+                responder.time_of_last_activity = time()
             try:
                 message = await websocket.receive_bytes()
+                await responder.receive_audio(message)
+
             except WebSocketDisconnect:
                 print("websocket disconnected")
                 return
-            print("got a message.")
 
-            # NOTE(zach): Client records at 16khz sample rate.
-            audio_16k_np = np.frombuffer(message, dtype=np.float32)
-            print("audio max and min: ", audio_16k_np.max(), audio_16k_np.min())
-
-            audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
-            audio_data.append(audio_16k_np)
-            if record:
-                recorder.append(audio_16k_np)
-            i = 0
-            while i < len(audio_16k):
-                upper = i + vad.window_size
-                if len(audio_16k) - vad.window_size < upper:
-                    upper = len(audio_16k)
-                audio_16k_chunk = audio_16k[i:upper]
-                vad_result = vad(audio_16k_chunk)
-                if vad_result:
-                    if "end" in vad_result:
-                        print("end of speech detected.")
-                        if response_task is None or response_task.done():
-                            response_task = asyncio.create_task(
-                                responder.start_response(
-                                    websocket,
-                                    db,
-                                    np.concatenate(audio_data),
-                                    session_id,
-                                )
-                            )
-                        else:
-                            print("already responding")
-                    if "start" in vad_result:
-                        print("start of speech detected.")
-                        if response_task and not response_task.done():
-                            responder.interrupt(response_task)
-                i = upper
     finally:
-        recorder.close_file()
+        responder.recorder.close_file()
+        responder.recorder.log()
 
-    # NOTE(zach): Consider adding a flag to do this rather than leaving it
-    # commented, so we can save audio recorded on the server to make sure it
-    # sounds right.
-    # from scipy.io.wavfile import write
-    # output_filename = "user_audio_response.wav"
-    # sample_rate = 24000  # Assuming the sample rate is 16000
-    # write(output_filename, sample_rate, audio_data)
-
-    # TODO(zach): We never actually close it right now, we wait for the client
-    # to close. But we should close it based on some timeout.
+    await responder.response_queue.join()
     await websocket.close()
+    await log_event(db, session_id, "ended_session")
+
+
+async def connect_daily():
+    session_id = str(uuid4())
+
+    Daily.init()
+    mic = Daily.create_microphone_device(
+        "my-mic", sample_rate=OUTPUT_SAMPLE_RATE, channels=1, non_blocking=True
+    )
+    speaker = Daily.create_speaker_device(
+        "my-speaker", sample_rate=WS_SAMPLE_RATE, channels=1
+    )
+    Daily.select_speaker_device("my-speaker")
+    client = CallClient()
+    client.update_subscription_profiles(
+        {"base": {"camera": "unsubscribed", "microphone": "subscribed"}}
+    )
+    client.join(
+        meeting_url="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+        client_settings={
+            "inputs": {
+                "camera": False,
+                "microphone": {
+                    "isEnabled": True,
+                    "settings": {"deviceId": "my-mic"},
+                },
+                "speaker": {
+                    "isEnabled": True,
+                    "settings": {"deviceId": "my-speaker"},
+                },
+            }
+        },
+    )
+    responder = ResponseAgent(
+        session_id=session_id, record=False, input_audio_format="int16"
+    )
+    asyncio.create_task(daily_consumer(responder.response_queue, mic))
+    while True:
+        if _check_for_exceptions(responder.response_task):
+            responder.audio_data = []
+            responder.response_task = None
+            responder.time_of_last_activity = time()
+
+        message = speaker.read_frames(WS_SAMPLE_RATE // 10)
+        if len(message) > 0:
+            await responder.receive_audio(message)
+        await asyncio.sleep(0.01)
+
+    responder.recorder.close_file()
+    responder.recorder.log()
+    await responder.response_queue.join()
+    await log_event(db, session_id, "ended_session")
+
+
+if __name__ == "__main__":
+    asyncio.run(connect_daily())

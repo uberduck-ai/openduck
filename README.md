@@ -2,7 +2,7 @@
 
 ## Goals
 
-Make it easy to build interactive, open, multimodal AI software and hardware products.
+Building an open source talking plush with a voice you can talk to.
 
 Our kids should grow up in a household full of hackable droids they can play with, work on, and learn from.
 
@@ -12,7 +12,7 @@ Our kids should grow up in a household full of hackable droids they can play wit
 
 1. Copy the `.env.example` to `.env` and fill in real values.
 
-2. Download server-side models and put them inside of `uberduck-py/models` (**TODO: share models**.)
+2. Download server-side models and put them inside of `openduck-py/models` (**TODO: share models**.)
 
 ### Install Dependencies
 
@@ -24,8 +24,40 @@ Our kids should grow up in a household full of hackable droids they can play wit
 
 ### Without Docker
 
-`uvicorn openduck_py.routers.main:app --reload --env-file .env`
+```
+cd openduck-py
+uvicorn openduck_py.routers.main:app --reload --env-file ../.env
+```
 
 ### With Docker
 
 `docker-compose up`
+
+### Run the client
+
+#### Simple Python Client
+
+```
+cd clients/simple
+# Lighter-weight requirements
+pip install -r requirements.txt
+python simple_bot.py --record
+```
+
+#### Conversation Review
+This will start up streamlit on port 8501 so make sure that port is forwarded if you are runnin on ssh. 
+
+Install streamlit
+```bash
+pip install streamlit
+```
+
+Run streamlit
+```bash
+cd openduck-py
+streamlit run observability.py
+```
+
+### Troubleshooting
+
+- The Simple Python client sometimes has strange audio playback bugs. You can try restarting your OS's audio services, e.g. `sudo pkill coreaudiod` on Mac OS.

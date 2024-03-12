@@ -25,7 +25,6 @@ import yaml
 from openduck_py.voices.settings import DEVICE
 
 
-
 class LearnedDownSample(nn.Module):
     def __init__(self, layer_type, dim_in):
         super().__init__()

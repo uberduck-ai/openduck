@@ -1,9 +1,10 @@
 version: '3.12'
 services:
   web:
+    image: 613148481050.dkr.ecr.us-west-2.amazonaws.com/openduck:latest
     build: .
-    command: bash -c "cd openduck-py && python setup.py develop && aws s3 cp --recursive s3://uberduck-models-us-west-2/prototype models && uvicorn openduck_py.routers.main:app --reload --host 0.0.0.0 --port 8000"
-    working_dir: /openduck-py
+    command: bash -c "python setup.py develop && mkdir -p models/styletts2 && aws s3 sync s3://uberduck-models-us-west-2/prototype/styletts2 models/styletts2 && uvicorn openduck_py.routers.main:app --reload --host 0.0.0.0 --port 8000"
+    working_dir: /openduck-py/openduck-py
     volumes:
       - .:/openduck-py
     ports:
@@ -11,3 +12,22 @@ services:
     env_file:
       - .env.dev
     runtime: nvidia
+  daily:
+    image: 613148481050.dkr.ecr.us-west-2.amazonaws.com/openduck:latest
+    build: .
+    command: bash -c "python setup.py develop && mkdir -p models/styletts2 && aws s3 sync s3://uberduck-models-us-west-2/prototype/styletts2 models/styletts2 && python openduck_py/routers/voice.py"
+    working_dir: /openduck-py/openduck-py
+    volumes:
+      - .:/openduck-py
+    env_file:
+      - .env.dev
+    runtime: nvidia
+  admin:
+    image: 613148481050.dkr.ecr.us-west-2.amazonaws.com/openduck:latest
+    build: .
+    command: bash -c "python setup.py develop && gunicorn openduck_py.admin.main:app --reload --bind 0.0.0.0:8001 --timeout 120 --log-level debug"
+    working_dir: /openduck-py/openduck-py
+    volumes:
+      - .:/openduck-py
+    ports:
+      - "8001:8001"

@@ -1,3 +1,4 @@
+import os
 import tempfile
 import re
 import yaml
@@ -5,11 +6,11 @@ import pylru
 
 import phonemizer
 import torch
-from scipy.io.wavfile import write as write_wav
 import librosa
 import torchaudio
 from nltk.tokenize import word_tokenize
 import numpy as np
+from torchaudio.functional import resample
 
 from .api.modules.diffusion.sampler import (
     DiffusionSampler,
@@ -18,12 +19,11 @@ from .api.modules.diffusion.sampler import (
 )
 from .settings import (
     DEVICE,
-    SAMPLE_RATE,
     ESPEAK_LANGUAGES,
     LATIN_CHARACTERS,
     PUNCTUATION_CHARACTERS,
-    MODEL_BUCKET,
 )
+
 from .api import (
     inference,
     recursive_munch,
@@ -34,8 +34,10 @@ from .api.models import (
     load_f0_models,
 )
 from .api.utils.plbert.util import load_plbert
-from openduck_py.utils.s3 import download_file, upload_file
+from openduck_py.utils.s3 import download_file
 
+
+STYLETTS2_SAMPLE_RATE = 24000
 
 _to_mel = torchaudio.transforms.MelSpectrogram(
     n_mels=80, n_fft=2048, win_length=1200, hop_length=300
@@ -131,10 +133,10 @@ def _preprocess(wave):
 
 
 def _compute_style(model, path):
-    wave, sr = librosa.load(path, sr=24000)
+    wave, sr = librosa.load(path, sr=STYLETTS2_SAMPLE_RATE)
     audio, index = librosa.effects.trim(wave, top_db=30)
-    if sr != 24000:
-        audio = librosa.resample(audio, sr, 24000)
+    if sr != STYLETTS2_SAMPLE_RATE:
+        audio = librosa.resample(audio, sr, STYLETTS2_SAMPLE_RATE)
     mel_tensor = _preprocess(audio).to(DEVICE)
 
     with torch.no_grad():
@@ -142,6 +144,8 @@ def _compute_style(model, path):
         ref_p = model.predictor_encoder(mel_tensor.unsqueeze(1))
 
     return torch.cat([ref_s, ref_p], dim=1)
+
+
 def _split_by_language(text):
     """Takes a block of text and returns a list of blocks and a list of booleans indicating whether each block is in latin characters or not.
     This can be used for basic language splitting."""
@@ -218,14 +222,25 @@ model_params = load_object_from_s3(
 )["model_params"]
 cache = pylru.lrucache(1)
 
-asr_config = load_config("models/asr_config.yml")
-plbert_config = load_config("models/plbert_config.yml")
 
-text_aligner = load_asr_models("models/text_aligner.pth", asr_config)
-pitch_extractor = load_f0_models("models/pitch_extractor.t7")
-plbert = load_plbert(plbert_config, "models/plbert.t7")
+models_prefix = os.path.join(os.path.dirname(__file__), "../..")
+
+asr_config = load_config(os.path.join(models_prefix, "models/styletts2/asr_config.yml"))
+plbert_config = load_config(
+    os.path.join(models_prefix, "models/styletts2/plbert_config.yml")
+)
+
+text_aligner = load_asr_models(
+    os.path.join(models_prefix, "models/styletts2/text_aligner.pth"), asr_config
+)
+pitch_extractor = load_f0_models(
+    os.path.join(models_prefix, "models/styletts2/pitch_extractor.t7")
+)
+plbert = load_plbert(
+    plbert_config, os.path.join(models_prefix, "models/styletts2/plbert.t7")
+)
 model, sampler = load_model(
-    model_path="models/cartoon-boy-upbeat.pth",
+    model_path=os.path.join(models_prefix, "models/styletts2/cartoon-boy-upbeat.pth"),
     text_aligner=text_aligner,
     pitch_extractor=pitch_extractor,
     plbert=plbert,
@@ -233,10 +248,12 @@ model, sampler = load_model(
 )
 
 
-ref_s = _compute_style(model, "models/cartoon-boy-upbeat.wav")
+ref_s = _compute_style(model, "models/styletts2/cartoon-boy-upbeat.wav")
 
 
-def styletts2_inference(text: str, language: str = "english"):
+def styletts2_inference(
+    text: str, language: str = "english", output_sample_rate=24000
+) -> np.ndarray:
     print("styletts2.run started")
 
     # NOTE (Sam): to deal with short inference issue https://github.com/yl4579/StyleTTS2/issues/46.
@@ -257,5 +274,6 @@ def styletts2_inference(text: str, language: str = "english"):
         sampler,
         ref_s,
         warm_start_index=warm_start_index,
+        output_sample_rate=output_sample_rate,
     )
     return audio_array
