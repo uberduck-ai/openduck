@@ -4,7 +4,8 @@ on:
   pull_request:
     types: [opened, closed, reopened, synchronize]
     branches:
-      - main
+      - production
+      - staging
 
 jobs:
   start-runner-openduck:
@@ -20,7 +21,7 @@ jobs:
         github.event.pull_request.merged == true
       )
     environment:
-      name: production
+      name: ${{ github.event.pull_request.base.ref }}
     outputs:
       label: ${{ steps.start-ec2-runner.outputs.label }}
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
@@ -61,7 +62,7 @@ jobs:
         github.event.pull_request.merged == true
       )
     environment:
-      name: production
+      name: ${{ github.event.pull_request.base.ref }}
     permissions:
       id-token: write
       contents: read
@@ -69,7 +70,7 @@ jobs:
       run:
         shell: bash
     env:
-      environment: production
+      environment: ${{ github.event.pull_request.base.ref }}
 
     steps:
       - name: Checkout Repository
@@ -132,7 +133,7 @@ jobs:
         github.event.pull_request.merged == true
       )
     environment:
-      name: production
+      name: ${{ github.event.pull_request.base.ref }}
     permissions:
       id-token: write
       contents: read
@@ -140,7 +141,7 @@ jobs:
       run:
         shell: bash
     env:
-      environment: production
+      environment: ${{ github.event.pull_request.base.ref }}
       aws_region: ${{ vars.AWS_REGION }}
     steps:
       - name: AWS credentials
@@ -166,7 +167,7 @@ jobs:
       always() &&
       !contains(needs.*.result, 'skipped')
     environment:
-      name: production
+      name: ${{ github.event.pull_request.base.ref }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
