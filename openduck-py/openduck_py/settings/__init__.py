@@ -10,4 +10,3 @@ IS_DEV = DEPLOY_ENV == "dev"
 CHUNK_SIZE = 10240
 LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
 CHAT_MODEL = "azure/gpt-35-turbo-deployment"
-UTILITY_MODEL = "azure/gpt-35-turbo-deployment"
