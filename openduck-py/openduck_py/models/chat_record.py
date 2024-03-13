@@ -35,7 +35,7 @@ class DBChatRecord(Base):
     event_name = Column(Text, nullable=False)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
     meta_json = Column(MutableDict.as_mutable(JSON))
-    latency = Column(Float)
+    latency_seconds = Column(Float)
 
 
 chat_records = DBChatRecord.__table__
