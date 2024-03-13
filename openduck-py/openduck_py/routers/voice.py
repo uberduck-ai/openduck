@@ -341,7 +341,6 @@ class ResponseAgent:
                     chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
                     await self.response_queue.put(chunk)
 
-
             print("Whisper", t_whisper - t_0, flush=True)
             print(CHAT_MODEL, t_chat - t_whisper, flush=True)
             print("Normalizer", t_normalize - t_chat, flush=True)
@@ -388,7 +387,9 @@ async def log_event(
         print(f"Wrote wavfile to {abs_path}")
 
         meta = {"audio_url": log_path}
-    record = DBChatRecord(session_id=session_id, event_name=event, meta_json=meta, latency=latency)
+    record = DBChatRecord(
+        session_id=session_id, event_name=event, meta_json=meta, latency=latency
+    )
     db.add(record)
     await db.commit()
 
