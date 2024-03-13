@@ -13,7 +13,6 @@ import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
-import torchaudio
 from whisper import load_model
 from daily import *
 
@@ -29,9 +28,8 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     LOG_TO_SLACK,
     CHAT_MODEL,
-    UTILITY_MODEL,
 )
-from openduck_py.routers.templates import generate, chat_continuation
+from openduck_py.routers.templates import chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
@@ -254,20 +252,6 @@ class ResponseAgent:
                 meta={"text": transcription},
                 latency=t_whisper - t_echo,
             )
-            # TODO (Matthew): Delete the intent classification since it requires an extra GPT call
-            classify_prompt = prompt("intent-classification")
-            classification_response = await generate(
-                template=classify_prompt,
-                variables={"transcription": transcription},
-                model=UTILITY_MODEL,
-                role="user",
-            )
-            classification_response_message = classification_response.choices[
-                0
-            ].message.content
-            if classification_response_message == "stop":
-                await self.response_queue.put(None)  # Signal to stop the conversation
-                return
             if not transcription or len(audio_data) < 100:
                 return
 

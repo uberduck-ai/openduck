@@ -12,25 +12,9 @@ os.environ["AZURE_API_BASE"] = os.getenv("AZURE_OPENAI_ENDPOINT")
 os.environ["AZURE_API_VERSION"] = "2023-05-15"
 
 
-# TODO (Matthew): Move these to utils, or just call the chat completions API without wrapper functions
-
-
+# TODO (Matthew): Delete this wrapper function, just call acompletion directly when needed
 async def chat_continuation(
     messages: List[Dict[str, str]], model: str = CHAT_MODEL
 ) -> ModelResponse:
     response = await acompletion(model=model, messages=messages, temperature=0.3)
-    return response
-
-
-async def generate(
-    template: str,
-    variables: Dict[str, Any],
-    model: str = CHAT_MODEL,
-    role="user",
-) -> ModelResponse:
-    jinja_template = jinja2.Template(template)
-
-    prompt = [{"content": jinja_template.render(variables), "role": role}]
-
-    response = await acompletion(model=model, messages=prompt, temperature=0.3)
     return response
