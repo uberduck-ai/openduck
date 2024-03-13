@@ -51,8 +51,8 @@ def display_chat_interface(records, show_events: Dict[str, bool]):
             elif "text" in meta_json:
                 st.markdown("##### " + meta_json.get("text"))
 
-            if record.latency:
-                st.write(f"Latency: {round(record.latency * 1000)} ms")
+            if record.latency_seconds:
+                st.write(f"Latency: {round(record.latency_seconds * 1000)} ms")
 
 
 stmt = (

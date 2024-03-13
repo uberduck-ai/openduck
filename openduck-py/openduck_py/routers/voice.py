@@ -372,7 +372,7 @@ async def log_event(
 
         meta = {"audio_url": log_path}
     record = DBChatRecord(
-        session_id=session_id, event_name=event, meta_json=meta, latency=latency
+        session_id=session_id, event_name=event, meta_json=meta, latency_seconds=latency
     )
     db.add(record)
     await db.commit()
