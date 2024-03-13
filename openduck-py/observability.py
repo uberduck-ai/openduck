@@ -51,6 +51,9 @@ def display_chat_interface(records, show_events: Dict[str, bool]):
             elif "text" in meta_json:
                 st.markdown("##### " + meta_json.get("text"))
 
+            if record.latency:
+                st.write(f"Latency: {round(record.latency * 1000)} ms")
+
 
 stmt = (
     select(DBChatRecord.session_id).distinct().order_by(DBChatRecord.timestamp.desc())
