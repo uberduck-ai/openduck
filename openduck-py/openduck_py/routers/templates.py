@@ -1,8 +1,7 @@
-from typing import Dict, List, Any
+from typing import Dict, List
 import os
 
 from litellm import acompletion, ModelResponse
-import jinja2
 
 from openduck_py.settings import CHAT_MODEL
 
