@@ -32,7 +32,6 @@ sqlalchemy_utils
 torch
 torchvision
 torchaudio
-transformers
 TTS>=0.22.0
 uvicorn[standard]
 websockets

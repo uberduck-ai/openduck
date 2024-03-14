@@ -24,7 +24,6 @@ def inference(text: str, output_sample_rate: int, language: str = "english") -> 
     )
     audio = audio["wav"]
     audio = resample(audio, 24000, output_sample_rate)
-    audio = audio.cpu().numpy()
     return audio
 
 def streaming_inference(text: str, output_sample_rate: int, language: str = "english") -> np.ndarray:
@@ -34,4 +33,4 @@ def streaming_inference(text: str, output_sample_rate: int, language: str = "eng
         gpt_cond_latent,
         speaker_embedding,
     )
-    return (resample(chunk, 24000, output_sample_rate).cpu().numpy() for chunk in stream)
+    return (resample(chunk, 24000, output_sample_rate) for chunk in stream)
