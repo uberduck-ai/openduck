@@ -15,6 +15,7 @@ from sqlalchemy import select
 import torch
 from whisper import load_model
 from daily import *
+from litellm import acompletion
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -29,7 +30,6 @@ from openduck_py.settings import (
     LOG_TO_SLACK,
     CHAT_MODEL,
 )
-from openduck_py.routers.templates import chat_continuation
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
@@ -277,7 +277,8 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await chat_continuation(messages)
+            response = await acompletion(CHAT_MODEL, messages, temperature=0.3)
+
             response_message = response.choices[0].message
             completion = response_message.content
             t_chat = time()
