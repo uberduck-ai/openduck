@@ -63,6 +63,8 @@ whisper_model = load_model("base.en")
 
 audio_router = APIRouter(prefix="/audio")
 
+processes = {}
+
 
 def _transcribe(audio_data):
     return whisper_model.transcribe(audio_data)["text"]
@@ -408,6 +410,7 @@ async def create_room_and_start():
     )
     process.start()
     print("started process: ", process.pid)
+    processes[process.pid] = process
     return RoomCreateResponse(
         url=room_info["url"],
         name=room_info["name"],
@@ -508,9 +511,7 @@ async def connect_daily(
 
 
 def run_connect_daily(room_url: str):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(connect_daily(room=room_url))
+    asyncio.run(connect_daily(room=room_url))
 
 
 if __name__ == "__main__":
