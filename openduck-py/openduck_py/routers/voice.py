@@ -215,14 +215,6 @@ class ResponseAgent:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             t_0 = time()
 
-            def _inference(sentence: str):
-                audio_chunk = styletts2_inference(
-                    text=sentence,
-                    output_sample_rate=OUTPUT_SAMPLE_RATE,
-                )
-                audio_chunk = np.int16(audio_chunk * 32767).tobytes()
-                return audio_chunk
-
             # Remove echo
             audio_data = await asyncio.to_thread(
                 segment_audio,
@@ -277,59 +269,76 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await acompletion(CHAT_MODEL, messages, temperature=0.3)
-
-            response_message = response.choices[0].message
-            completion = response_message.content
-            t_chat = time()
-            await log_event(
-                db,
-                self.session_id,
-                "generated_completion",
-                meta={"text": completion},
-                latency=t_chat - t_whisper,
-            )
-            print(
-                f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+            response = await acompletion(
+                CHAT_MODEL, messages, temperature=0.3, stream=True
             )
 
-            if "$ECHO" in completion:
-                print("Echo detected, not sending response.")
-                return
+            complete_sentence = ""
+            full_response = ""
+            async for chunk in response:
+                chunk_text = chunk.choices[0].delta.content
+                if not chunk_text:
+                    break
+                complete_sentence += chunk_text
+                full_response += chunk_text
+                # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
+                if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
+                    await self.speak_response(complete_sentence, db, t_whisper)
+                    complete_sentence = ""
 
-            messages.append({"role": response_message.role, "content": completion})
+            messages.append({"role": "assistant", "content": full_response})
             chat.history_json["messages"] = messages
             await db.commit()
 
-            normalized = normalize_text(response_message.content)
-            t_normalize = time()
-            await log_event(
-                db,
-                self.session_id,
-                "normalized_text",
-                meta={"text": normalized},
-                latency=t_normalize - t_chat,
+    async def speak_response(
+        self,
+        response_text: str,
+        db: AsyncSession,
+        start_time: float,
+    ):
+        t_chat = time()
+        await log_event(
+            db,
+            self.session_id,
+            "generated_completion",
+            meta={"text": response_text},
+            latency=t_chat - start_time,
+        )
+        if "$ECHO" in response_text:
+            print("Echo detected, not sending response.")
+            return
+
+        normalized = normalize_text(response_text)
+        t_normalize = time()
+        await log_event(
+            db,
+            self.session_id,
+            "normalized_text",
+            meta={"text": normalized},
+            latency=t_normalize - t_chat,
+        )
+
+        def _inference(sentence: str):
+            audio_chunk = styletts2_inference(
+                text=sentence,
+                output_sample_rate=OUTPUT_SAMPLE_RATE,
             )
-            sentences = re.split(r"(?<=[.!?]) +", normalized)
-            for sentence in sentences:
-                audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
-                t_styletts = time()
-                await log_event(
-                    db,
-                    self.session_id,
-                    "generated_tts",
-                    audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
-                    latency=t_styletts - t_normalize,
-                )
+            audio_chunk = np.int16(audio_chunk * 32767).tobytes()
+            return audio_chunk
 
-                for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
-                    chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
-                    await self.response_queue.put(chunk)
+        audio_chunk_bytes = await asyncio.to_thread(_inference, normalized)
+        t_styletts = time()
+        await log_event(
+            db,
+            self.session_id,
+            "generated_tts",
+            audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+            latency=t_styletts - t_normalize,
+        )
 
-            print("Whisper", t_whisper - t_0, flush=True)
-            print(CHAT_MODEL, t_chat - t_whisper, flush=True)
-            print("Normalizer", t_normalize - t_chat, flush=True)
-            print("StyleTTS2 + sending bytes", t_styletts - t_normalize, flush=True)
+        for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
+            chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
+            await self.response_queue.put(chunk)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
