@@ -184,19 +184,11 @@ const AudioCall = ({ callObject }) => {
 
   const createRoom = useCallback(async () => {
     try {
-      const response = await fetch("https://api.daily.co/v1/rooms", {
+      const response = await fetch("http://localhost:8000/audio/start", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer YOUR_DAILY_API_KEY`,
         },
-        body: JSON.stringify({
-          properties: {
-            enable_chat: true,
-            start_video_off: false,
-            start_audio_off: false,
-          },
-        }),
       });
       const room = await response.json();
       if (room.url) {
@@ -224,6 +216,12 @@ const AudioCall = ({ callObject }) => {
         placeholder="Enter room URL"
       />
       <div className="flex space-x-2">
+        <button
+          className="px-4 py-2 rounded font-bold bg-green-500 hover:bg-green-600 text-white"
+          onClick={createRoom}
+        >
+          Create Room
+        </button>
         {joinedRoom ? (
           <button
             className="px-4 py-2 rounded font-bold bg-red-500 hover:bg-red-600 text-white"
@@ -233,8 +231,21 @@ const AudioCall = ({ callObject }) => {
           </button>
         ) : (
           <button
-            className="px-4 py-2 rounded font-bold bg-blue-500 hover:bg-blue-600 text-white"
+            className={`px-4 py-2 rounded font-bold ${
+              roomUrl &&
+              roomUrl.match(
+                /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/
+              )
+                ? "bg-blue-500 hover:bg-blue-600"
+                : "bg-blue-300"
+            } text-white`}
             onClick={() => joinCall("User")}
+            disabled={
+              !roomUrl ||
+              !roomUrl.match(
+                /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/
+              )
+            }
           >
             Join Room
           </button>
