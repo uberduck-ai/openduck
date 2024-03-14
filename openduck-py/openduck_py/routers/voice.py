@@ -54,10 +54,6 @@ if TTS_ARCHITECTURE == "styletts2":
     from openduck_py.voices.styletts2 import styletts2_inference as tts_inference
 elif TTS_ARCHITECTURE == "piper":
     from openduck_py.voices.piper import inference as tts_inference
-elif TTS_ARCHITECTURE == "xtts":
-    from openduck_py.voices.xtts import inference as tts_inference
-elif TTS_ARCHITECTURE == "xtts_streaming":
-    from openduck_py.voices.xtts import streaming_inference
 else:
     raise ValueError(f"Unsupported TTS architecture: {TTS_ARCHITECTURE}")
 

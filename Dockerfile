@@ -12,4 +12,3 @@ RUN apt-get update && \
 RUN pip install --upgrade pip
 RUN pip install Cython
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install numpy==1.24.*
