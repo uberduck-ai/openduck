@@ -182,6 +182,34 @@ const AudioCall = ({ callObject }) => {
     [callObject]
   );
 
+  const createRoom = useCallback(async () => {
+    try {
+      const response = await fetch("https://api.daily.co/v1/rooms", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer YOUR_DAILY_API_KEY`,
+        },
+        body: JSON.stringify({
+          properties: {
+            enable_chat: true,
+            start_video_off: false,
+            start_audio_off: false,
+          },
+        }),
+      });
+      const room = await response.json();
+      if (room.url) {
+        console.log("Room created:", room.url);
+        setRoomUrl(room.url);
+      } else {
+        console.error("Failed to create room");
+      }
+    } catch (error) {
+      console.error("Error creating room:", error);
+    }
+  }, []);
+
   useEffect(() => {
     startHairCheck(roomUrl);
   }, []);

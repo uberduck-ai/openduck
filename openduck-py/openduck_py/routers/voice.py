@@ -32,6 +32,7 @@ from openduck_py.settings import (
     UTILITY_MODEL,
 )
 from openduck_py.routers.templates import generate, chat_continuation
+from openduck_py.utils.daily import create_room, RoomCreateResponse
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
@@ -389,6 +390,24 @@ async def consumer(queue: asyncio.Queue, websocket: WebSocket):
             queue.task_done()
 
 
+@audio_router.post("/start")
+async def create_room_and_start():
+    room_info = await create_room()
+    print("created room")
+    import multiprocessing
+
+    process = multiprocessing.Process(
+        target=run_connect_daily, args=(room_info["url"],)
+    )
+    process.start()
+    print("started process: ", process.pid)
+    return RoomCreateResponse(
+        url=room_info["url"],
+        name=room_info["name"],
+        privacy=room_info["privacy"],
+    )
+
+
 @audio_router.websocket("/response")
 async def audio_response(
     websocket: WebSocket,
@@ -427,7 +446,9 @@ async def audio_response(
     await log_event(db, session_id, "ended_session")
 
 
-async def connect_daily():
+async def connect_daily(
+    room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+):
     session_id = str(uuid4())
 
     Daily.init()
@@ -443,7 +464,7 @@ async def connect_daily():
         {"base": {"camera": "unsubscribed", "microphone": "subscribed"}}
     )
     client.join(
-        meeting_url="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+        meeting_url=room,
         client_settings={
             "inputs": {
                 "camera": False,
@@ -463,6 +484,7 @@ async def connect_daily():
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
     while True:
+        print("hi")
         if _check_for_exceptions(responder.response_task):
             responder.audio_data = []
             responder.response_task = None
@@ -477,6 +499,12 @@ async def connect_daily():
     responder.recorder.log()
     await responder.response_queue.join()
     await log_event(db, session_id, "ended_session")
+
+
+def run_connect_daily(room_url: str):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(connect_daily(room=room_url))
 
 
 if __name__ == "__main__":
