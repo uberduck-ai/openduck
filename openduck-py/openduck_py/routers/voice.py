@@ -2,7 +2,7 @@ import asyncio
 import os
 import re
 from time import time
-from typing import Optional, Dict, Literal, List
+from typing import Optional, Dict, Literal
 import wave
 import requests
 from pathlib import Path
@@ -15,7 +15,7 @@ from sqlalchemy import select
 import torch
 from whisper import load_model
 from daily import *
-from litellm import acompletion, ModelResponse
+from litellm import completion
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -269,40 +269,46 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await acompletion(CHAT_MODEL, messages, temperature=0.3)
-            await self.speak_response(response, db, t_whisper, messages, chat)
+            response = await asyncio.to_thread(
+                completion, CHAT_MODEL, messages, temperature=0.3, stream=True
+            )
+
+            complete_sentence = ""
+            full_response = ""
+            for chunk in response:
+                chunk_text = chunk.choices[0].delta.content
+                if not chunk_text:
+                    break
+                complete_sentence += chunk_text
+                full_response += chunk_text
+                # TODO: Smarter sentence detection - this will fail on like Mr. Kennedy or whatever
+                if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
+                    await self.speak_response(complete_sentence, db, t_whisper)
+                    complete_sentence = ""
+
+            messages.append({"role": "assistant", "content": full_response})
+            chat.history_json["messages"] = messages
+            await db.commit()
 
     async def speak_response(
         self,
-        response: ModelResponse,
+        response_text: str,
         db: AsyncSession,
         start_time: float,
-        messages: List[Dict[str, str]],
-        chat_history: DBChatHistory,
     ):
-        response_message = response.choices[0].message
-        llm_completion = response_message.content
         t_chat = time()
         await log_event(
             db,
             self.session_id,
             "generated_completion",
-            meta={"text": llm_completion},
+            meta={"text": response_text},
             latency=t_chat - start_time,
         )
-        print(
-            f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
-        )
-
-        if "$ECHO" in llm_completion:
+        if "$ECHO" in response_text:
             print("Echo detected, not sending response.")
             return
 
-        messages.append({"role": response_message.role, "content": llm_completion})
-        chat_history.history_json["messages"] = messages
-        await db.commit()
-
-        normalized = normalize_text(response_message.content)
+        normalized = normalize_text(response_text)
         t_normalize = time()
         await log_event(
             db,
@@ -320,21 +326,19 @@ class ResponseAgent:
             audio_chunk = np.int16(audio_chunk * 32767).tobytes()
             return audio_chunk
 
-        sentences = re.split(r"(?<=[.!?]) +", normalized)
-        for sentence in sentences:
-            audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
-            t_styletts = time()
-            await log_event(
-                db,
-                self.session_id,
-                "generated_tts",
-                audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
-                latency=t_styletts - t_normalize,
-            )
+        audio_chunk_bytes = await asyncio.to_thread(_inference, normalized)
+        t_styletts = time()
+        await log_event(
+            db,
+            self.session_id,
+            "generated_tts",
+            audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+            latency=t_styletts - t_normalize,
+        )
 
-            for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
-                chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
-                await self.response_queue.put(chunk)
+        for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
+            chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
+            await self.response_queue.put(chunk)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
