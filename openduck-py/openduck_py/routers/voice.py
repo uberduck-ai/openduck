@@ -281,7 +281,7 @@ class ResponseAgent:
                     break
                 complete_sentence += chunk_text
                 full_response += chunk_text
-                # TODO: Smarter sentence detection - this will fail on like Mr. Kennedy or whatever
+                # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
                 if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
                     await self.speak_response(complete_sentence, db, t_whisper)
                     complete_sentence = ""
