@@ -29,7 +29,7 @@ async def create_room(exp=None) -> dict:
             json={
                 "properties": {
                     "enable_chat": True,
-                    "start_video_off": False,
+                    "start_video_off": True,
                     "start_audio_off": False,
                     "exp": exp,
                 }

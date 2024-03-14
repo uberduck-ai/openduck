@@ -491,7 +491,6 @@ async def connect_daily(
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
     while True:
-        print("hi")
         if _check_for_exceptions(responder.response_task):
             responder.audio_data = []
             responder.response_task = None
