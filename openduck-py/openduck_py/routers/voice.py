@@ -13,9 +13,9 @@ import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
-import torchaudio
 from whisper import load_model
 from daily import *
+from litellm import acompletion
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -29,9 +29,7 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     LOG_TO_SLACK,
     CHAT_MODEL,
-    UTILITY_MODEL,
 )
-from openduck_py.routers.templates import generate, chat_continuation
 from openduck_py.utils.daily import create_room, RoomCreateResponse
 from openduck_py.utils.speaker_identification import (
     segment_audio,
@@ -216,7 +214,7 @@ class ResponseAgent:
         self.is_responding = True
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
-            t0 = time()
+            t_0 = time()
 
             def _inference(sentence: str):
                 audio_chunk = styletts2_inference(
@@ -235,29 +233,26 @@ class ResponseAgent:
                 pipeline,
                 inference,
             )
-            await log_event(db, self.session_id, "removed_echo", audio=audio_data)
 
-            # TODO: timestamp for echo removal
+            t_echo = time()
+            await log_event(
+                db,
+                self.session_id,
+                "removed_echo",
+                audio=audio_data,
+                latency=t_echo - t_0,
+            )
 
             transcription = await asyncio.to_thread(_transcribe, audio_data)
-            print("TRANSCRIPTION: ", transcription)
+            print("TRANSCRIPTION: ", transcription, flush=True)
             t_whisper = time()
             await log_event(
-                db, self.session_id, "transcribed_audio", meta={"text": transcription}
+                db,
+                self.session_id,
+                "transcribed_audio",
+                meta={"text": transcription},
+                latency=t_whisper - t_echo,
             )
-            classify_prompt = prompt("intent-classification")
-            classification_response = await generate(
-                template=classify_prompt,
-                variables={"transcription": transcription},
-                model=UTILITY_MODEL,
-                role="user",
-            )
-            classification_response_message = classification_response.choices[
-                0
-            ].message.content
-            if classification_response_message == "stop":
-                await self.response_queue.put(None)  # Signal to stop the conversation
-                return
             if not transcription or len(audio_data) < 100:
                 return
 
@@ -283,13 +278,18 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await chat_continuation(messages)
+            response = await acompletion(CHAT_MODEL, messages, temperature=0.3)
+
             response_message = response.choices[0].message
             completion = response_message.content
-            await log_event(
-                db, self.session_id, "generated_completion", meta={"text": completion}
-            )
             t_chat = time()
+            await log_event(
+                db,
+                self.session_id,
+                "generated_completion",
+                meta={"text": completion},
+                latency=t_chat - t_whisper,
+            )
             print(
                 f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
             )
@@ -303,30 +303,34 @@ class ResponseAgent:
             await db.commit()
 
             normalized = normalize_text(response_message.content)
-            await log_event(
-                db, self.session_id, "normalized_text", meta={"text": normalized}
-            )
             t_normalize = time()
+            await log_event(
+                db,
+                self.session_id,
+                "normalized_text",
+                meta={"text": normalized},
+                latency=t_normalize - t_chat,
+            )
             sentences = re.split(r"(?<=[.!?]) +", normalized)
             for sentence in sentences:
                 audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
+                t_styletts = time()
                 await log_event(
                     db,
                     self.session_id,
                     "generated_tts",
                     audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+                    latency=t_styletts - t_normalize,
                 )
 
                 for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
                     chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
                     await self.response_queue.put(chunk)
 
-            t_styletts = time()
-
-            print("Whisper", t_whisper - t0)
-            print(CHAT_MODEL, t_chat - t_whisper)
-            print("Normalizer", t_normalize - t_chat)
-            print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
+            print("Whisper", t_whisper - t_0, flush=True)
+            print(CHAT_MODEL, t_chat - t_whisper, flush=True)
+            print("Normalizer", t_normalize - t_chat, flush=True)
+            print("StyleTTS2 + sending bytes", t_styletts - t_normalize, flush=True)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
@@ -353,6 +357,7 @@ async def log_event(
     event: EventName,
     meta: Optional[Dict[str, str]] = None,
     audio: Optional[np.ndarray] = None,
+    latency: Optional[float] = None,
 ):
     if audio is not None:
         log_path = f"logs/{session_id}/{event}_{time()}.wav"
@@ -368,7 +373,9 @@ async def log_event(
         print(f"Wrote wavfile to {abs_path}")
 
         meta = {"audio_url": log_path}
-    record = DBChatRecord(session_id=session_id, event_name=event, meta_json=meta)
+    record = DBChatRecord(
+        session_id=session_id, event_name=event, meta_json=meta, latency_seconds=latency
+    )
     db.add(record)
     await db.commit()
 
@@ -381,7 +388,7 @@ async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
             queue.task_done()
 
 
-async def consumer(queue: asyncio.Queue, websocket: WebSocket):
+async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
     """Dequeue audio chunks and send them through the websocket."""
     while True:
         chunk = await queue.get()  # Dequeue a chunk
@@ -418,7 +425,7 @@ async def audio_response(
     await websocket.accept()
 
     responder = ResponseAgent(session_id=session_id, record=record)
-    asyncio.create_task(consumer(responder.response_queue, websocket))
+    asyncio.create_task(websocket_consumer(responder.response_queue, websocket))
 
     try:
         while True:

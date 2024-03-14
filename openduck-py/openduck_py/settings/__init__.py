@@ -10,4 +10,8 @@ IS_DEV = DEPLOY_ENV == "dev"
 CHUNK_SIZE = 10240
 LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
 CHAT_MODEL = "azure/gpt-35-turbo-deployment"
-UTILITY_MODEL = "azure/gpt-35-turbo-deployment"
+
+# to not break existing env files
+os.environ["AZURE_API_KEY"] = os.getenv("AZURE_OPENAI_API_KEY")
+os.environ["AZURE_API_BASE"] = os.getenv("AZURE_OPENAI_ENDPOINT")
+os.environ["AZURE_API_VERSION"] = "2023-05-15"
