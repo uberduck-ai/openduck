@@ -2,7 +2,7 @@ import asyncio
 import os
 import re
 from time import time
-from typing import Optional, Dict, Literal
+from typing import Optional, Dict, Literal, List
 import wave
 import requests
 from pathlib import Path
@@ -15,7 +15,7 @@ from sqlalchemy import select
 import torch
 from whisper import load_model
 from daily import *
-from litellm import acompletion
+from litellm import acompletion, ModelResponse
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -215,14 +215,6 @@ class ResponseAgent:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             t_0 = time()
 
-            def _inference(sentence: str):
-                audio_chunk = styletts2_inference(
-                    text=sentence,
-                    output_sample_rate=OUTPUT_SAMPLE_RATE,
-                )
-                audio_chunk = np.int16(audio_chunk * 32767).tobytes()
-                return audio_chunk
-
             # Remove echo
             audio_data = await asyncio.to_thread(
                 segment_audio,
@@ -278,58 +270,71 @@ class ResponseAgent:
             messages.append(new_message)
 
             response = await acompletion(CHAT_MODEL, messages, temperature=0.3)
+            await self.speak_response(response, db, t_whisper, messages, chat)
 
-            response_message = response.choices[0].message
-            completion = response_message.content
-            t_chat = time()
+    async def speak_response(
+        self,
+        response: ModelResponse,
+        db: AsyncSession,
+        start_time: float,
+        messages: List[Dict[str, str]],
+        chat_history: DBChatHistory,
+    ):
+        response_message = response.choices[0].message
+        llm_completion = response_message.content
+        t_chat = time()
+        await log_event(
+            db,
+            self.session_id,
+            "generated_completion",
+            meta={"text": llm_completion},
+            latency=t_chat - start_time,
+        )
+        print(
+            f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+        )
+
+        if "$ECHO" in llm_completion:
+            print("Echo detected, not sending response.")
+            return
+
+        messages.append({"role": response_message.role, "content": llm_completion})
+        chat_history.history_json["messages"] = messages
+        await db.commit()
+
+        normalized = normalize_text(response_message.content)
+        t_normalize = time()
+        await log_event(
+            db,
+            self.session_id,
+            "normalized_text",
+            meta={"text": normalized},
+            latency=t_normalize - t_chat,
+        )
+
+        def _inference(sentence: str):
+            audio_chunk = styletts2_inference(
+                text=sentence,
+                output_sample_rate=OUTPUT_SAMPLE_RATE,
+            )
+            audio_chunk = np.int16(audio_chunk * 32767).tobytes()
+            return audio_chunk
+
+        sentences = re.split(r"(?<=[.!?]) +", normalized)
+        for sentence in sentences:
+            audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
+            t_styletts = time()
             await log_event(
                 db,
                 self.session_id,
-                "generated_completion",
-                meta={"text": completion},
-                latency=t_chat - t_whisper,
-            )
-            print(
-                f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+                "generated_tts",
+                audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+                latency=t_styletts - t_normalize,
             )
 
-            if "$ECHO" in completion:
-                print("Echo detected, not sending response.")
-                return
-
-            messages.append({"role": response_message.role, "content": completion})
-            chat.history_json["messages"] = messages
-            await db.commit()
-
-            normalized = normalize_text(response_message.content)
-            t_normalize = time()
-            await log_event(
-                db,
-                self.session_id,
-                "normalized_text",
-                meta={"text": normalized},
-                latency=t_normalize - t_chat,
-            )
-            sentences = re.split(r"(?<=[.!?]) +", normalized)
-            for sentence in sentences:
-                audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
-                t_styletts = time()
-                await log_event(
-                    db,
-                    self.session_id,
-                    "generated_tts",
-                    audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
-                    latency=t_styletts - t_normalize,
-                )
-
-                for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
-                    chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
-                    await self.response_queue.put(chunk)
-
-            print("Whisper", t_whisper - t_0, flush=True)
-            print(CHAT_MODEL, t_chat - t_whisper, flush=True)
-            print("Normalizer", t_normalize - t_chat, flush=True)
-            print("StyleTTS2 + sending bytes", t_styletts - t_normalize, flush=True)
+            for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
+                chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
+                await self.response_queue.put(chunk)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
