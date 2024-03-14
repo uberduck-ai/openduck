@@ -15,7 +15,7 @@ from sqlalchemy import select
 import torch
 from whisper import load_model
 from daily import *
-from litellm import completion
+from litellm import acompletion
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -269,13 +269,13 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await asyncio.to_thread(
-                completion, CHAT_MODEL, messages, temperature=0.3, stream=True
+            response = await acompletion(
+                CHAT_MODEL, messages, temperature=0.3, stream=True
             )
 
             complete_sentence = ""
             full_response = ""
-            for chunk in response:
+            async for chunk in response:
                 chunk_text = chunk.choices[0].delta.content
                 if not chunk_text:
                     break
