@@ -1,4 +1,6 @@
+import numpy as np
 from torchaudio.functional import resample
+
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
 
@@ -13,7 +15,7 @@ if DEVICE == "cuda":
 
 gpt_cond_latent, speaker_embedding = model.get_conditioning_latents(audio_path=["models/cartoon-boy-upbeat.wav"])
 
-def inference(text: str, language: str = "english"):
+def inference(text: str, output_sample_rate: int, language: str = "english") -> np.ndarray:
     audio = model.inference(
         text,
         "en",
@@ -21,13 +23,15 @@ def inference(text: str, language: str = "english"):
         speaker_embedding,
     )
     audio = audio["wav"]
+    audio = resample(audio, 24000, output_sample_rate)
+    audio = audio.cpu().numpy()
     return audio
 
-def streaming_inference(text: str, language: str = "english"):
+def streaming_inference(text: str, output_sample_rate: int, language: str = "english") -> np.ndarray:
     stream = model.inference_stream(
         text,
         "en",
         gpt_cond_latent,
         speaker_embedding,
     )
-    return (chunk.cpu().numpy() for chunk in stream)
+    return (resample(chunk, 24000, output_sample_rate).cpu().numpy() for chunk in stream)
