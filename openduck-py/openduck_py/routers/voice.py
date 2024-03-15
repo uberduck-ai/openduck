@@ -343,7 +343,7 @@ class ResponseAgent:
 
         def _inference(sentence: str):
             audio_chunk = tts_inference(text=sentence)
-            
+
             audio_chunk_bytes = np.int16(audio_chunk * 32767).tobytes()
             return audio_chunk_bytes
 
