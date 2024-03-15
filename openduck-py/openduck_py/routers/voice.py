@@ -157,7 +157,7 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
-        self.hold_sound_task = None
+        self.hold_sound_event = asyncio.Event()
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -203,7 +203,6 @@ class ResponseAgent:
                                     np.concatenate(self.audio_data),
                                 )
                             )
-                            # self.hold_sound_task = asyncio.create_task(self.play_sfx_loop("generating"))
                         else:
                             print("already responding")
                     if "start" in vad_result:
@@ -224,24 +223,27 @@ class ResponseAgent:
             chunk = sound[i : i + CHUNK_SIZE]
             await self.response_queue.put(chunk)
 
-    """ [TODO] (hecko) idk how to make this not stop tts from getting through
     async def play_sfx_loop(self, name):
+        self.hold_sound_event.clear()
         sound = sound_effects[name]
         try:
+            head = time()
             while True:
                 for i in range(0, len(sound), CHUNK_SIZE):
+                    if self.hold_sound_event.is_set():
+                        raise asyncio.CancelledError
                     chunk = sound[i : i + CHUNK_SIZE]
-                    await self.response_queue.join()
                     await self.response_queue.put(chunk)
-                    asyncio.sleep(len(chunk) / OUTPUT_SAMPLE_RATE)
+                    head += len(chunk) / OUTPUT_SAMPLE_RATE
+                    await asyncio.sleep(max(0, head - time() - 0.1))  # buffer
         except asyncio.CancelledError:
             pass
-    """
 
     async def start_response(
         self,
         audio_data: np.ndarray,
     ):
+        asyncio.create_task(self.play_sfx_loop("generating"))
         self.is_responding = True
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
@@ -277,6 +279,8 @@ class ResponseAgent:
                 latency=t_whisper - t_echo,
             )
             if not transcription or len(audio_data) < 100:
+                self.hold_sound_event.set()
+                self.play_sfx("listening")
                 return
 
             system_prompt = {
@@ -314,12 +318,12 @@ class ResponseAgent:
                 complete_sentence += chunk_text
                 full_response += chunk_text
 
-                # is_first_sentence = True
+                is_first_sentence = True
                 # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
                 if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
-                    # if is_first_sentence:
-                    #    self.hold_sound_task.cancel()
-                    #    is_first_sentence = False
+                    if is_first_sentence:
+                        self.hold_sound_event.set()
+                        is_first_sentence = False
                     await self.speak_response(complete_sentence, db, t_whisper)
                     complete_sentence = ""
 
@@ -345,6 +349,8 @@ class ResponseAgent:
         )
         if "$ECHO" in response_text:
             print("Echo detected, not sending response.")
+            self.hold_sound_event.set()
+            self.play_sfx("listening")
             return
 
         normalized = normalize_text(response_text)
