@@ -18,6 +18,7 @@ import torch
 from whisper import load_model
 from daily import *
 from litellm import acompletion
+import librosa
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -31,6 +32,9 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     LOG_TO_SLACK,
     CHAT_MODEL,
+    SFX_VOLUME,
+    ENABLE_HOLD_SOUND,
+    PADDING_S,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
 from openduck_py.utils.speaker_identification import load_pipelines
@@ -65,6 +69,13 @@ audio_router = APIRouter(prefix="/audio")
 Daily.init()
 
 processes = {}
+
+
+SFX = {}
+for i in ("listening", "received", "generating", "error"):
+    sound, _ = librosa.load(f"models/sfx/{i}.wav", sr=OUTPUT_SAMPLE_RATE)
+    sound = np.round(sound * 32767 * SFX_VOLUME).astype(np.int16).tobytes()
+    SFX[i] = sound
 
 
 def _transcribe(audio_data):
@@ -152,6 +163,8 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+        self.loop_sound_task = None
+        self.loop_sound_stop = asyncio.Event()
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -191,6 +204,7 @@ class ResponseAgent:
                         self.time_of_last_activity = time()
                         await log_event(db, self.session_id, "detected_end_of_speech")
                         if self.response_task is None or self.response_task.done():
+                            await self.send_audio(SFX["received"])
                             self.response_task = asyncio.create_task(
                                 self.start_response(
                                     np.concatenate(self.audio_data),
@@ -210,10 +224,40 @@ class ResponseAgent:
                                 self.interrupt(self.response_task)
             i = upper
 
+    async def send_audio(self, audio_bytes: bytes):
+        for i in range(0, len(audio_bytes), CHUNK_SIZE):
+            chunk = audio_bytes[i : i + CHUNK_SIZE]
+            await self.response_queue.put(chunk)
+
+    async def send_audio_silence(self, length_s: float):
+        silence = np.zeros(int(length_s * OUTPUT_SAMPLE_RATE), dtype=np.int16).tobytes()
+        await self.send_audio(silence)
+
+    async def send_audio_loop(self, audio_bytes: bytes):
+        self.loop_sound_stop.clear()
+        try:
+            head = time()
+            while True:
+                for i in range(0, len(audio_bytes), CHUNK_SIZE):
+                    if self.loop_sound_stop.is_set():
+                        raise asyncio.CancelledError
+                    chunk = audio_bytes[i : i + CHUNK_SIZE]
+                    await self.response_queue.put(chunk)
+                    head += len(chunk) / OUTPUT_SAMPLE_RATE / 2  # int16
+                    await asyncio.sleep(max(0, head - time() - 0.1))  # buffer
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self.loop_sound_task = None
+
     async def start_response(
         self,
         audio_data: np.ndarray,
     ):
+        if ENABLE_HOLD_SOUND and not self.loop_sound_task:
+            self.loop_sound_task = asyncio.create_task(
+                self.send_audio_loop(SFX["generating"])
+            )
         self.is_responding = True
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
@@ -230,6 +274,8 @@ class ResponseAgent:
                 latency=t_whisper - t_0,
             )
             if not transcription or len(audio_data) < 100:
+                self.loop_sound_stop.set()
+                await self.send_audio(SFX["listening"])
                 return
 
             system_prompt = {
@@ -260,16 +306,39 @@ class ResponseAgent:
 
             complete_sentence = ""
             full_response = ""
+            is_first_sentence = True
+            play_error_sound = False
             async for chunk in response:
                 chunk_text = chunk.choices[0].delta.content
                 if not chunk_text:
                     break
                 complete_sentence += chunk_text
                 full_response += chunk_text
-                # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
+
+                if full_response.startswith("$ECHO"):
+                    print("Echo detected, not sending response.")
+                    self.loop_sound_stop.set()
+                    return
+                if full_response.startswith("$ERROR"):
+                    print("Error detected, sending response with error sound.")
+                    play_error_sound = True
+                    full_response = full_response[len("$ERROR") :]
+                    complete_sentence = complete_sentence[len("$ERROR") :]
                 if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
-                    await self.speak_response(complete_sentence, db, t_whisper)
+                    if is_first_sentence:
+                        self.loop_sound_stop.set()
+                    # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
+                    await self.speak_response(
+                        complete_sentence,
+                        db,
+                        t_whisper,
+                        (SFX["error"] if play_error_sound else None),
+                    )
                     complete_sentence = ""
+                    is_first_sentence = False
+                    play_error_sound = False
+
+            await self.send_audio(SFX["listening"])
 
             messages.append({"role": "assistant", "content": full_response})
             chat.history_json["messages"] = messages
@@ -280,6 +349,7 @@ class ResponseAgent:
         response_text: str,
         db: AsyncSession,
         start_time: float,
+        prefix_sound: Optional[bytes],
     ):
         t_chat = time()
         await log_event(
@@ -289,9 +359,6 @@ class ResponseAgent:
             meta={"text": response_text},
             latency=t_chat - start_time,
         )
-        if "$ECHO" in response_text:
-            print("Echo detected, not sending response.")
-            return
 
         normalized = normalize_text(response_text)
         t_normalize = time()
@@ -321,9 +388,11 @@ class ResponseAgent:
             latency=t_styletts - t_normalize,
         )
 
-        for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
-            chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
-            await self.response_queue.put(chunk)
+        if prefix_sound:
+            await self.send_audio(prefix_sound)
+            await self.send_audio_silence(PADDING_S)
+        await self.send_audio(audio_chunk_bytes)
+        await self.send_audio_silence(PADDING_S)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:

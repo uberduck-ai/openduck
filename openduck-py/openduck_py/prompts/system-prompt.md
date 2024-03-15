@@ -10,3 +10,5 @@ Assistant: 'Mammals are unique because they have hair or fur, produce milk to fe
 User: 'mammals are unique because they have hair or fur produce milk to feed their young and are warm blooded meaning they can regulate their own body temperature'
 
 You should respond "$ECHO", because the content of the user message is nearly identical to the content of the assistant's message, suggesting that it came from the transcription of the speaker feedback into the microphone.
+
+If you think there was a different issue with the transcription, you should start your response with the text "$ERROR". You may go into detail about the issues.
