@@ -1,12 +1,14 @@
 import asyncio
 import os
 import re
+import multiprocessing
 from time import time
 from typing import Optional, Dict, Literal
 import wave
 import requests
 from pathlib import Path
 from uuid import uuid4
+import threading
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
@@ -30,6 +32,7 @@ from openduck_py.settings import (
     LOG_TO_SLACK,
     CHAT_MODEL,
 )
+from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
 from openduck_py.utils.speaker_identification import (
     segment_audio,
     load_pipelines,
@@ -61,6 +64,10 @@ speaker_embedding = inference("aec-cartoon-degraded.wav")
 whisper_model = load_model("base.en")
 
 audio_router = APIRouter(prefix="/audio")
+
+Daily.init()
+
+processes = {}
 
 
 def _transcribe(audio_data):
@@ -405,6 +412,24 @@ async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
             queue.task_done()
 
 
+@audio_router.post("/start")
+async def create_room_and_start():
+    room_info = await create_room()
+    print("created room")
+
+    process = multiprocessing.Process(
+        target=run_connect_daily, args=(room_info["url"],)
+    )
+    process.start()
+    print("started process: ", process.pid)
+    processes[process.pid] = process
+    return RoomCreateResponse(
+        url=room_info["url"],
+        name=room_info["name"],
+        privacy=room_info["privacy"],
+    )
+
+
 @audio_router.websocket("/response")
 async def audio_response(
     websocket: WebSocket,
@@ -443,10 +468,10 @@ async def audio_response(
     await log_event(db, session_id, "ended_session")
 
 
-async def connect_daily():
+async def connect_daily(
+    room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+):
     session_id = str(uuid4())
-
-    Daily.init()
     mic = Daily.create_microphone_device(
         "my-mic", sample_rate=OUTPUT_SAMPLE_RATE, channels=1, non_blocking=True
     )
@@ -454,12 +479,14 @@ async def connect_daily():
         "my-speaker", sample_rate=WS_SAMPLE_RATE, channels=1
     )
     Daily.select_speaker_device("my-speaker")
-    client = CallClient()
+
+    event_handler = CustomEventHandler()
+    client = event_handler.client
     client.update_subscription_profiles(
         {"base": {"camera": "unsubscribed", "microphone": "subscribed"}}
     )
     client.join(
-        meeting_url="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+        meeting_url=room,
         client_settings={
             "inputs": {
                 "camera": False,
@@ -483,6 +510,9 @@ async def connect_daily():
             responder.audio_data = []
             responder.response_task = None
             responder.time_of_last_activity = time()
+        if event_handler.left:
+            print("left the call")
+            break
 
         message = speaker.read_frames(WS_SAMPLE_RATE // 10)
         if len(message) > 0:
@@ -492,7 +522,12 @@ async def connect_daily():
     responder.recorder.close_file()
     responder.recorder.log()
     await responder.response_queue.join()
-    await log_event(db, session_id, "ended_session")
+    async with SessionAsync() as db:
+        await log_event(db, session_id, "ended_session")
+
+
+def run_connect_daily(room_url: str):
+    asyncio.run(connect_daily(room=room_url))
 
 
 if __name__ == "__main__":
