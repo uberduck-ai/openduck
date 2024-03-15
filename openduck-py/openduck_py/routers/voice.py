@@ -33,10 +33,7 @@ from openduck_py.settings import (
     CHAT_MODEL,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
-from openduck_py.utils.speaker_identification import (
-    segment_audio,
-    load_pipelines,
-)
+from openduck_py.utils.speaker_identification import load_pipelines
 from openduck_py.logging.slack import log_audio_to_slack
 
 if IS_DEV:
@@ -222,25 +219,6 @@ class ResponseAgent:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             t_0 = time()
 
-            # Remove echo
-            audio_data = await asyncio.to_thread(
-                segment_audio,
-                audio_data,
-                WS_SAMPLE_RATE,
-                speaker_embedding,
-                pipeline,
-                inference,
-            )
-
-            t_echo = time()
-            await log_event(
-                db,
-                self.session_id,
-                "removed_echo",
-                audio=audio_data,
-                latency=t_echo - t_0,
-            )
-
             transcription = await asyncio.to_thread(_transcribe, audio_data)
             print("TRANSCRIPTION: ", transcription, flush=True)
             t_whisper = time()
@@ -249,7 +227,7 @@ class ResponseAgent:
                 self.session_id,
                 "transcribed_audio",
                 meta={"text": transcription},
-                latency=t_whisper - t_echo,
+                latency=t_whisper - t_0,
             )
             if not transcription or len(audio_data) < 100:
                 return
