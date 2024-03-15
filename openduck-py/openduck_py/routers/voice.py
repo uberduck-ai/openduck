@@ -16,6 +16,7 @@ import torch
 from whisper import load_model
 from daily import *
 from litellm import acompletion
+import librosa
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
@@ -29,6 +30,7 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     LOG_TO_SLACK,
     CHAT_MODEL,
+    SFX_VOLUME,
 )
 from openduck_py.utils.speaker_identification import (
     segment_audio,
@@ -61,6 +63,13 @@ speaker_embedding = inference("aec-cartoon-degraded.wav")
 whisper_model = load_model("base.en")
 
 audio_router = APIRouter(prefix="/audio")
+
+
+sound_effects = {}
+for i in ("listening", "received", "generating", "error"):
+    sound, _ = librosa.load(f"models/sfx/{i}.wav", sr=OUTPUT_SAMPLE_RATE)
+    sound = np.round(sound * 32767 * SFX_VOLUME).astype(np.int16).tobytes()
+    sound_effects[i] = sound
 
 
 def _transcribe(audio_data):
@@ -148,6 +157,7 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+        self.hold_sound_task = None
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -187,11 +197,13 @@ class ResponseAgent:
                         self.time_of_last_activity = time()
                         await log_event(db, self.session_id, "detected_end_of_speech")
                         if self.response_task is None or self.response_task.done():
+                            await self.play_sfx("received")
                             self.response_task = asyncio.create_task(
                                 self.start_response(
                                     np.concatenate(self.audio_data),
                                 )
                             )
+                            # self.hold_sound_task = asyncio.create_task(self.play_sfx_loop("generating"))
                         else:
                             print("already responding")
                     if "start" in vad_result:
@@ -205,6 +217,26 @@ class ResponseAgent:
                                 )
                                 self.interrupt(self.response_task)
             i = upper
+
+    async def play_sfx(self, name):
+        sound = sound_effects[name]
+        for i in range(0, len(sound), CHUNK_SIZE):
+            chunk = sound[i : i + CHUNK_SIZE]
+            await self.response_queue.put(chunk)
+
+    """ [TODO] (hecko) idk how to make this not stop tts from getting through
+    async def play_sfx_loop(self, name):
+        sound = sound_effects[name]
+        try:
+            while True:
+                for i in range(0, len(sound), CHUNK_SIZE):
+                    chunk = sound[i : i + CHUNK_SIZE]
+                    await self.response_queue.join()
+                    await self.response_queue.put(chunk)
+                    asyncio.sleep(len(chunk) / OUTPUT_SAMPLE_RATE)
+        except asyncio.CancelledError:
+            pass
+    """
 
     async def start_response(
         self,
@@ -281,10 +313,17 @@ class ResponseAgent:
                     break
                 complete_sentence += chunk_text
                 full_response += chunk_text
+
+                # is_first_sentence = True
                 # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
                 if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
+                    # if is_first_sentence:
+                    #    self.hold_sound_task.cancel()
+                    #    is_first_sentence = False
                     await self.speak_response(complete_sentence, db, t_whisper)
                     complete_sentence = ""
+
+            await self.play_sfx("listening")
 
             messages.append({"role": "assistant", "content": full_response})
             chat.history_json["messages"] = messages

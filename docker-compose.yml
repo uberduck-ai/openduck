@@ -5,8 +5,8 @@ services:
     build: .
     command: >
       bash -c "python setup.py develop &&  \
-               mkdir -p models/styletts2  && \
-               aws s3 sync s3://uberduck-models-us-west-2/prototype/styletts2 models/styletts2 && \ 
+               mkdir -p models && \
+               aws s3 sync s3://uberduck-models-us-west-2/prototype models && \ 
                uvicorn openduck_py.routers.main:app --reload --host 0.0.0.0 --port 8000"
     working_dir: /openduck-py/openduck-py
     volumes:
@@ -21,8 +21,8 @@ services:
     build: .
     command: >
       bash -c "python setup.py develop &&  \ 
-               mkdir -p models/styletts2 && \ 
-               aws s3 sync s3://uberduck-models-us-west-2/prototype/styletts2 models/styletts2 && \ 
+               mkdir -p models && \ 
+               aws s3 sync s3://uberduck-models-us-west-2/prototype models && \ 
                apt update && apt install -y python3-pip && \ 
                pip install watchdog[watchmedo] && \ 
                watchmedo auto-restart --directory=./openduck_py --pattern=*.py --recursive -- python openduck_py/routers/voice.py"
