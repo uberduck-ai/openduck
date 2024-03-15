@@ -31,6 +31,7 @@ from openduck_py.settings import (
     LOG_TO_SLACK,
     CHAT_MODEL,
     SFX_VOLUME,
+    ENABLE_HOLD_SOUND,
 )
 from openduck_py.utils.speaker_identification import (
     segment_audio,
@@ -157,6 +158,7 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+        self.hold_sound_task = None
         self.hold_sound_event = asyncio.Event()
 
     def interrupt(self, task: asyncio.Task):
@@ -234,16 +236,19 @@ class ResponseAgent:
                         raise asyncio.CancelledError
                     chunk = sound[i : i + CHUNK_SIZE]
                     await self.response_queue.put(chunk)
-                    head += len(chunk) / OUTPUT_SAMPLE_RATE
+                    head += len(chunk) / OUTPUT_SAMPLE_RATE / 2  # int16
                     await asyncio.sleep(max(0, head - time() - 0.1))  # buffer
         except asyncio.CancelledError:
             pass
+        finally:
+            self.hold_sound_task = None
 
     async def start_response(
         self,
         audio_data: np.ndarray,
     ):
-        asyncio.create_task(self.play_sfx_loop("generating"))
+        if ENABLE_HOLD_SOUND and not self.hold_sound_task:
+            self.hold_sound_task = asyncio.create_task(self.play_sfx_loop("generating"))
         self.is_responding = True
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
