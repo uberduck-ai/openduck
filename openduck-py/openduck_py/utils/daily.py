@@ -1,6 +1,7 @@
 import os
 import time
 
+from daily import EventHandler, CallClient
 import httpx
 from pydantic import BaseModel
 
@@ -37,3 +38,24 @@ async def create_room(exp=None) -> dict:
         )
     response.raise_for_status()
     return response.json()
+
+
+class CustomEventHandler(EventHandler):
+    def __init__(self):
+        self.client = CallClient(event_handler=self)
+        self.left = False
+
+    def _leave_callback(self, *args, **kwargs):
+        self.left = True
+
+    def on_participant_counts_updated(self, counts):
+        print("Participant counts updated", counts)
+        print(self.client.participants())
+
+    def on_participant_left(self, participant, reason):
+        print("Participant left", participant, reason)
+        print(self.client.participants())
+        participants = self.client.participants()
+        if len(participants) == 1 and "local" in participants:
+            print("Last participant left, ending the call")
+            self.client.leave(completion=self._leave_callback)
