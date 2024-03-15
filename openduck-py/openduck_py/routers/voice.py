@@ -32,6 +32,7 @@ from openduck_py.settings import (
     CHAT_MODEL,
     SFX_VOLUME,
     ENABLE_HOLD_SOUND,
+    PADDING_S,
 )
 from openduck_py.utils.speaker_identification import (
     segment_audio,
@@ -224,6 +225,10 @@ class ResponseAgent:
             chunk = audio_bytes[i : i + CHUNK_SIZE]
             await self.response_queue.put(chunk)
 
+    async def send_audio_silence(self, length_s: float):
+        silence = np.zeros(int(length_s * OUTPUT_SAMPLE_RATE), dtype=np.int16).tobytes()
+        await self.send_audio(silence)
+
     async def send_audio_loop(self, audio_bytes: bytes):
         self.loop_sound_stop.clear()
         try:
@@ -400,7 +405,9 @@ class ResponseAgent:
 
         if prefix_sound:
             await self.send_audio(prefix_sound)
+            await self.send_audio_silence(PADDING_S)
         await self.send_audio(audio_chunk_bytes)
+        await self.send_audio_silence(PADDING_S)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
