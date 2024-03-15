@@ -225,12 +225,12 @@ class ResponseAgent:
             await self.response_queue.put(chunk)
 
     async def send_audio_loop(self, audio_bytes: bytes):
-        self.loop_sound_event.clear()
+        self.loop_sound_stop.clear()
         try:
             head = time()
             while True:
                 for i in range(0, len(audio_bytes), CHUNK_SIZE):
-                    if self.loop_sound_event.is_set():
+                    if self.loop_sound_stop.is_set():
                         raise asyncio.CancelledError
                     chunk = audio_bytes[i : i + CHUNK_SIZE]
                     await self.response_queue.put(chunk)
@@ -285,7 +285,7 @@ class ResponseAgent:
             )
             if not transcription or len(audio_data) < 100:
                 self.loop_sound_stop.set()
-                self.send_audio(SFX["listening"])
+                await self.send_audio(SFX["listening"])
                 return
 
             system_prompt = {
@@ -316,6 +316,8 @@ class ResponseAgent:
 
             complete_sentence = ""
             full_response = ""
+            is_first_sentence = True
+            play_error_sound = False
             async for chunk in response:
                 chunk_text = chunk.choices[0].delta.content
                 if not chunk_text:
@@ -323,14 +325,28 @@ class ResponseAgent:
                 complete_sentence += chunk_text
                 full_response += chunk_text
 
-                is_first_sentence = True
-                # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
+                if full_response.startswith("$ECHO"):
+                    print("Echo detected, not sending response.")
+                    self.loop_sound_stop.set()
+                    return
+                if full_response.startswith("$ERROR"):
+                    print("Error detected, sending response with error sound.")
+                    play_error_sound = True
+                    full_response = full_response[len("$ERROR") :]
+                    complete_sentence = complete_sentence[len("$ERROR") :]
                 if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
                     if is_first_sentence:
                         self.loop_sound_stop.set()
-                        is_first_sentence = False
-                    await self.speak_response(complete_sentence, db, t_whisper)
+                    # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
+                    await self.speak_response(
+                        complete_sentence,
+                        db,
+                        t_whisper,
+                        (SFX["error"] if play_error_sound else None),
+                    )
                     complete_sentence = ""
+                    is_first_sentence = False
+                    play_error_sound = False
 
             await self.send_audio(SFX["listening"])
 
@@ -343,6 +359,7 @@ class ResponseAgent:
         response_text: str,
         db: AsyncSession,
         start_time: float,
+        prefix_sound: Optional[bytes],
     ):
         t_chat = time()
         await log_event(
@@ -352,11 +369,6 @@ class ResponseAgent:
             meta={"text": response_text},
             latency=t_chat - start_time,
         )
-        if "$ECHO" in response_text:
-            print("Echo detected, not sending response.")
-            self.loop_sound_stop.set()
-            self.send_audio(SFX["listening"])
-            return
 
         normalized = normalize_text(response_text)
         t_normalize = time()
@@ -386,6 +398,8 @@ class ResponseAgent:
             latency=t_styletts - t_normalize,
         )
 
+        if prefix_sound:
+            await self.send_audio(prefix_sound)
         await self.send_audio(audio_chunk_bytes)
 
 
