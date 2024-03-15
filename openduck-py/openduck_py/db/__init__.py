@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import configure_mappers, declarative_base, sessionmaker
 
 
-connection_string = f"sqlite:///{Path(__file__).parent.parent.parent}/test.db"
+connection_string = f"sqlite:///{Path(__file__).parent.parent.parent}/database/test.db"
 async_connection_string = (
-    f"sqlite+aiosqlite:///{Path(__file__).parent.parent.parent}/test.db"
+    f"sqlite+aiosqlite:///{Path(__file__).parent.parent.parent}/database/test.db"
 )
 
 
