@@ -17,6 +17,7 @@ numpy
 openai
 openai-whisper
 phonemizer
+piper-tts
 pyannote.core
 pyannote.audio
 pylru
