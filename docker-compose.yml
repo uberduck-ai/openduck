@@ -32,14 +32,3 @@ services:
     env_file:
       - .env.dev
     runtime: nvidia
-  admin:
-    image: 613148481050.dkr.ecr.us-west-2.amazonaws.com/openduck:latest
-    build: .
-    command: >
-      bash -c "python setup.py develop && \ 
-               gunicorn openduck_py.admin.main:app --reload --bind 0.0.0.0:8001 --timeout 120 --log-level debug"
-    working_dir: /openduck-py/openduck-py
-    volumes:
-      - .:/openduck-py
-    ports:
-      - "8001:8001"
