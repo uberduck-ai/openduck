@@ -47,20 +47,16 @@ async def text_to_speech(tts_input: TTSInput):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-app = FastAPI(
-    title="ML Services for OpenDuck", servers=[{"url": "http://localhost:8001"}]
-)
+app = FastAPI(title="ML Services for Openduck")
 
-# Add CORS middleware to allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Allows all origins
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Include the ML router
 app.include_router(ml_router)
 
 
