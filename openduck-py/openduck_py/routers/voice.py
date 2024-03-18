@@ -67,8 +67,35 @@ Daily.init()
 processes = {}
 
 
-def _transcribe(audio_data):
-    return whisper_model.transcribe(audio_data)["text"]
+def _transcribe(audio_data: np.ndarray):
+    from io import BytesIO
+
+    assert audio_data.dtype == np.float32
+    wav_io = BytesIO(audio_data.tobytes())
+    wavfile.write(wav_io, WS_SAMPLE_RATE, audio_data)
+    wav_data = wav_io.getvalue()
+    # Set up the endpoint URL
+    url = "http://openduck_ml_1:8001/ml/transcribe"
+
+    # Set up the request data
+    files = {"audio": ("audio.wav", wav_data, "audio/wav")}
+
+    # Send the POST request to the endpoint
+    response = requests.post(url, files=files)
+
+    # Check the response status code
+    if response.status_code == 200:
+        return response.json()["text"]
+    else:
+        raise Exception(f"Transcription failed with status code {response.status_code}")
+
+    # files = {"audio_data": ("audio_data.wav", audio_file, "application/octet-stream")}
+    # response = requests.post("http://openduck_ml_1:8001/ml/transcribe", files=files)
+    # if response.status_code == 200:
+    #     return response.json().get("transcription", "")
+    # else:
+    #     raise Exception(f"Transcription failed with status code {response.status_code}")
+    # return whisper_model.transcribe(audio_data)["text"]
 
 
 class WavAppender:
@@ -219,7 +246,8 @@ class ResponseAgent:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             t_0 = time()
 
-            transcription = await asyncio.to_thread(_transcribe, audio_data)
+            # transcription = await asyncio.to_thread(_transcribe, audio_data)
+            transcription = _transcribe(audio_data)
             print("TRANSCRIPTION: ", transcription, flush=True)
             t_whisper = time()
             await log_event(

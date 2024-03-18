@@ -6,13 +6,10 @@ ml_router = APIRouter(prefix="/ml")
 
 
 @ml_router.post("/transcribe")
-async def transcribe_audio(
-    audio: UploadFile = File(..., media_type="application/octet-stream")
-):
+async def transcribe_audio(audio: UploadFile = File(..., media_type="audio/wav")):
     # Placeholder for actual audio transcription logic
     try:
         audio_data = await audio.read()
-        # Simulate transcription process
         transcribed_text = "This is a simulated transcription."
         return {"text": transcribed_text}
     except Exception as e:
