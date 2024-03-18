@@ -23,7 +23,6 @@ from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.voices.styletts2 import STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import (
     IS_DEV,
     WS_SAMPLE_RATE,
@@ -376,7 +375,7 @@ async def log_event(
 
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
-            sample_rate = STYLETTS2_SAMPLE_RATE
+            sample_rate = OUTPUT_SAMPLE_RATE
         wavfile.write(abs_path, sample_rate, audio)
         print(f"Wrote wavfile to {abs_path}")
 
