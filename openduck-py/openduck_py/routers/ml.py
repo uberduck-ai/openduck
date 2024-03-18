@@ -1,17 +1,25 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 import io
+
+from whisper import load_model
+import numpy as np
 
 ml_router = APIRouter(prefix="/ml")
 
+whisper_model = load_model("base.en")
+
 
 @ml_router.post("/transcribe")
-async def transcribe_audio(audio: UploadFile = File(..., media_type="audio/wav")):
-    # Placeholder for actual audio transcription logic
+async def transcribe_audio(
+    audio: UploadFile = File(..., media_type="application/octet-stream")
+):
     try:
-        audio_data = await audio.read()
-        transcribed_text = "This is a simulated transcription."
-        return {"text": transcribed_text}
+        audio_bytes = await audio.read()
+        audio_data = np.frombuffer(audio_bytes, dtype=np.float32)
+        transcription = whisper_model.transcribe(audio_data)["text"]
+        return {"text": transcription}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -28,9 +36,6 @@ async def text_to_speech(text: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="ML Services for OpenDuck", servers=[{"url": "http://localhost:8001"}]

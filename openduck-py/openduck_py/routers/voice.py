@@ -8,14 +8,13 @@ import wave
 import requests
 from pathlib import Path
 from uuid import uuid4
-import threading
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
-from whisper import load_model
 from daily import *
 from litellm import acompletion
 
@@ -58,7 +57,6 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
     )
 
 speaker_embedding = inference("aec-cartoon-degraded.wav")
-whisper_model = load_model("base.en")
 
 audio_router = APIRouter(prefix="/audio")
 
@@ -68,19 +66,13 @@ processes = {}
 
 
 def _transcribe(audio_data: np.ndarray):
-    from io import BytesIO
-
     assert audio_data.dtype == np.float32
     wav_io = BytesIO(audio_data.tobytes())
-    wavfile.write(wav_io, WS_SAMPLE_RATE, audio_data)
     wav_data = wav_io.getvalue()
-    # Set up the endpoint URL
-    url = "http://openduck_ml_1:8001/ml/transcribe"
-
-    # Set up the request data
-    files = {"audio": ("audio.wav", wav_data, "audio/wav")}
 
     # Send the POST request to the endpoint
+    url = "http://openduck_ml_1:8001/ml/transcribe"
+    files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
     response = requests.post(url, files=files)
 
     # Check the response status code
@@ -88,14 +80,6 @@ def _transcribe(audio_data: np.ndarray):
         return response.json()["text"]
     else:
         raise Exception(f"Transcription failed with status code {response.status_code}")
-
-    # files = {"audio_data": ("audio_data.wav", audio_file, "application/octet-stream")}
-    # response = requests.post("http://openduck_ml_1:8001/ml/transcribe", files=files)
-    # if response.status_code == 200:
-    #     return response.json().get("transcription", "")
-    # else:
-    #     raise Exception(f"Transcription failed with status code {response.status_code}")
-    # return whisper_model.transcribe(audio_data)["text"]
 
 
 class WavAppender:
