@@ -282,14 +282,14 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
 
   return (
     <div className="flex flex-col items-center space-y-4 p-4">
-      <div
+      <button
         className="orb-button bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform hover:scale-110 transition-transform duration-300 ease-in-out"
         onClick={handleOrbClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
       >
         {joinedRoom ? "Leave Room" : "Create & Join Room"}
-      </div>
+      </button>
       {roomUrl && false && <div className="text-sm">Room URL: {roomUrl}</div>}
       <div>
         <Call toggleMic={toggleMic} micOn={micOn} />
