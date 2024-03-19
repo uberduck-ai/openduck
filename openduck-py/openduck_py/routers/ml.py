@@ -19,6 +19,10 @@ whisper_model = load_model("base.en")
 async def transcribe_audio(
     audio: UploadFile = File(..., media_type="application/octet-stream")
 ):
+    """
+    Transcribes the given audio using OpenAI Whisper base.en. Audio should be a float32 bytes array
+    sampled at 16 kHz.
+    """
     try:
         audio_bytes = await audio.read()
         audio_data = np.frombuffer(audio_bytes, dtype=np.float32)

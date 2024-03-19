@@ -29,7 +29,7 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     IS_DEV,
     LOG_TO_SLACK,
-    ML_API_BASE,
+    ML_API_URL,
     OUTPUT_SAMPLE_RATE,
     WS_SAMPLE_RATE,
 )
@@ -74,7 +74,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
     wav_data = wav_io.getvalue()
 
     # Send the POST request to the endpoint
-    url = f"{ML_API_BASE}/ml/transcribe"
+    url = f"{ML_API_URL}/ml/transcribe"
     files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
     async with httpx.AsyncClient() as client:
         response = await client.post(url, files=files)
@@ -87,7 +87,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
 
 
 async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
-    url = f"{ML_API_BASE}/ml/tts"
+    url = f"{ML_API_URL}/ml/tts"
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json={"text": sentence})
 
