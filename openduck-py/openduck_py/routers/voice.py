@@ -30,6 +30,7 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     LOG_TO_SLACK,
     CHAT_MODEL,
+    ML_API_URL,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
 from openduck_py.utils.speaker_identification import load_pipelines
@@ -71,7 +72,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
     wav_data = wav_io.getvalue()
 
     # Send the POST request to the endpoint
-    url = "http://openduck_ml_1:8001/ml/transcribe"
+    url = f"{ML_API_URL}/ml/transcribe"
     files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
     async with httpx.AsyncClient() as client:
         response = await client.post(url, files=files)
@@ -84,7 +85,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
 
 
 async def _inference(sentence: str) -> np.ndarray:
-    url = "http://openduck_ml_1:8001/ml/tts"
+    url = f"{ML_API_URL}/ml/tts"
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json={"text": sentence})
         audio_chunk_bytes = response.read()
