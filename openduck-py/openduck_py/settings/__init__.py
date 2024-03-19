@@ -4,8 +4,7 @@ HF_AUTH_TOKEN = os.environ.get("HF_AUTH_TOKEN")
 EMB_MATCH_THRESHOLD = 0.5
 WS_SAMPLE_RATE = 16_000
 OUTPUT_SAMPLE_RATE = 24_000
-DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "dev")
-IS_DEV = DEPLOY_ENV == "dev"
+IS_DEV = bool(os.environ.get("IS_DEV", True))
 ML_API_URL = os.environ["ML_API_URL"]
 # Set to 1024 for the esp32, but larger CHUNK_SIZE is needed to prevent choppiness with the local client
 CHUNK_SIZE = 10240

@@ -3,14 +3,14 @@ import os
 import re
 import multiprocessing
 from time import time
-from typing import Optional, Dict, Literal, AsyncIterator, AsyncGenerator
+from typing import Optional, Dict, Literal, AsyncGenerator
 import wave
 import requests
 from pathlib import Path
 from uuid import uuid4
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
@@ -27,7 +27,6 @@ from openduck_py.prompts import prompt
 from openduck_py.settings import (
     CHAT_MODEL,
     CHUNK_SIZE,
-    IS_DEV,
     LOG_TO_SLACK,
     ML_API_URL,
     OUTPUT_SAMPLE_RATE,
@@ -37,14 +36,6 @@ from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEvent
 from openduck_py.utils.speaker_identification import load_pipelines
 from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
 from openduck_py.logging.slack import log_audio_to_slack
-
-if IS_DEV:
-    normalize_text = lambda x: x
-else:
-    from nemo_text_processing.text_normalization.normalize import Normalizer
-
-    normalizer = Normalizer(input_case="cased", lang="en")
-    normalize_text = normalizer.normalize
 
 
 try:
@@ -60,7 +51,6 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
     )
 
 speaker_embedding = inference("aec-cartoon-degraded.wav")
-
 audio_router = APIRouter(prefix="/audio")
 
 Daily.init()
@@ -79,11 +69,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
     async with httpx.AsyncClient() as client:
         response = await client.post(url, files=files)
 
-    # Check the response status code
-    if response.status_code == 200:
-        return response.json()["text"]
-    else:
-        raise Exception(f"Transcription failed with status code {response.status_code}")
+    return response.json()["text"]
 
 
 async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
@@ -93,6 +79,18 @@ async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
 
         async for chunk in response.aiter_bytes(CHUNK_SIZE):
             yield chunk
+
+
+async def _normalize_text(text: str) -> str:
+    url = f"{ML_API_URL}/ml/normalize"
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json={"text": text})
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=response.status_code, detail="Normalization service failed"
+        )
+    return response.json()["text"]
 
 
 class WavAppender:
@@ -325,8 +323,7 @@ class ResponseAgent:
             return
 
         if self.tts_config.provider == "local":
-
-            normalized = normalize_text(response_text)
+            normalized = await _normalize_text(response_text)
             t_normalize = time()
             await log_event(
                 db,
@@ -370,8 +367,8 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
             response_task.result()
         except asyncio.CancelledError:
             print("response task was cancelled")
-        except Exception as e:
-            print("response task raised an exception:", e)
+        # except Exception as e:
+        #     print("response task raised an exception:", e)
         else:
             print(
                 "response task completed successfully. Resetting audio_data and response_task"
