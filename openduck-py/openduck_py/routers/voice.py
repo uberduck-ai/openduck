@@ -72,7 +72,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
     wav_data = wav_io.getvalue()
 
     # Send the POST request to the endpoint
-    url = ML_API_URL + "/ml/transcribe"
+    url = f"{ML_API_URL}/ml/transcribe"
     files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
     async with httpx.AsyncClient() as client:
         response = await client.post(url, files=files)
@@ -85,7 +85,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
 
 
 async def _inference(sentence: str) -> np.ndarray:
-    url = ML_API_URL + "/ml/tts"
+    url = f"{ML_API_URL}/ml/tts"
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json={"text": sentence})
         audio_chunk_bytes = response.read()
