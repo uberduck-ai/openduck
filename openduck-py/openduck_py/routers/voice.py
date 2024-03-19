@@ -285,10 +285,17 @@ class ResponseAgent:
             messages = chat.history_json["messages"]
             messages.append(new_message)
 
-            response = await acompletion(
-                CHAT_MODEL, messages, temperature=0.3, stream=True
-            )
-
+            # NOTE(zach): retries
+            response = None
+            for _ in range(3):
+                try:
+                    response = await acompletion(
+                        CHAT_MODEL, messages, temperature=0.3, stream=True
+                    )
+                except Exception:
+                    raise
+                else:
+                    break
             complete_sentence = ""
             full_response = ""
             async for chunk in response:
