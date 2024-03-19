@@ -8,22 +8,21 @@ import wave
 import requests
 from pathlib import Path
 from uuid import uuid4
-import threading
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
 import torch
-from whisper import load_model
 from daily import *
 from litellm import acompletion
+import httpx
 
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import (
     IS_DEV,
     WS_SAMPLE_RATE,
@@ -58,7 +57,6 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
     )
 
 speaker_embedding = inference("aec-cartoon-degraded.wav")
-whisper_model = load_model("base.en")
 
 audio_router = APIRouter(prefix="/audio")
 
@@ -67,8 +65,30 @@ Daily.init()
 processes = {}
 
 
-def _transcribe(audio_data):
-    return whisper_model.transcribe(audio_data)["text"]
+async def _transcribe(audio_data: np.ndarray) -> str:
+    assert audio_data.dtype == np.float32
+    wav_io = BytesIO(audio_data.tobytes())
+    wav_data = wav_io.getvalue()
+
+    # Send the POST request to the endpoint
+    url = "http://openduck_ml_1:8001/ml/transcribe"
+    files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, files=files)
+
+    # Check the response status code
+    if response.status_code == 200:
+        return response.json()["text"]
+    else:
+        raise Exception(f"Transcription failed with status code {response.status_code}")
+
+
+async def _inference(sentence: str) -> np.ndarray:
+    url = "http://openduck_ml_1:8001/ml/tts"
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json={"text": sentence})
+        audio_chunk_bytes = response.read()
+    return audio_chunk_bytes
 
 
 class WavAppender:
@@ -160,6 +180,8 @@ class ResponseAgent:
         self.is_responding = False
 
     async def receive_audio(self, message: np.ndarray):
+        # Convert the input audio from input_audio_format to float32
+        # Silero VAD and Whisper require float32
         if self.input_audio_format == "float32":
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
         elif self.input_audio_format == "int32":
@@ -219,7 +241,7 @@ class ResponseAgent:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             t_0 = time()
 
-            transcription = await asyncio.to_thread(_transcribe, audio_data)
+            transcription = await _transcribe(audio_data)
             print("TRANSCRIPTION: ", transcription, flush=True)
             t_whisper = time()
             await log_event(
@@ -303,15 +325,7 @@ class ResponseAgent:
             latency=t_normalize - t_chat,
         )
 
-        def _inference(sentence: str):
-            audio_chunk = styletts2_inference(
-                text=sentence,
-                output_sample_rate=OUTPUT_SAMPLE_RATE,
-            )
-            audio_chunk = np.int16(audio_chunk * 32767).tobytes()
-            return audio_chunk
-
-        audio_chunk_bytes = await asyncio.to_thread(_inference, normalized)
+        audio_chunk_bytes = await _inference(normalized)
         t_styletts = time()
         await log_event(
             db,
@@ -361,7 +375,7 @@ async def log_event(
 
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
-            sample_rate = STYLETTS2_SAMPLE_RATE
+            sample_rate = OUTPUT_SAMPLE_RATE
         wavfile.write(abs_path, sample_rate, audio)
         print(f"Wrote wavfile to {abs_path}")
 
