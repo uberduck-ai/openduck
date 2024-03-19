@@ -15,3 +15,5 @@ CHAT_MODEL = "azure/gpt-35-turbo-deployment"
 os.environ["AZURE_API_KEY"] = os.getenv("AZURE_OPENAI_API_KEY")
 os.environ["AZURE_API_BASE"] = os.getenv("AZURE_OPENAI_ENDPOINT")
 os.environ["AZURE_API_VERSION"] = "2023-05-15"
+
+ML_API_BASE = os.environ["ML_API_BASE"]
