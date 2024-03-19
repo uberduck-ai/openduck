@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
-import torch
 from daily import *
 from litellm import acompletion
 import httpx
@@ -133,6 +132,11 @@ class SileroVad:
             self.vad_iterator.reset_states()
 
     def __call__(self, audio_data):
+        # Lazy import torch so that it doesn't slow down creating a new Daily room for the user
+        import torch
+
+        if not isinstance(audio_data, torch.Tensor):
+            audio_data = torch.tensor(audio_data)
         if self.model is None:
             model, utils = torch.hub.load(
                 repo_or_dir="snakers4/silero-vad", model="silero_vad"
@@ -194,17 +198,15 @@ class ResponseAgent:
             audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int16).max
             audio_16k_np = audio_16k_np.astype(np.float32)
 
-        audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
-
         self.audio_data.append(audio_16k_np)
         if self.record:
             self.recorder.append(audio_16k_np)
         i = 0
-        while i < len(audio_16k):
+        while i < len(audio_16k_np):
             upper = i + self.vad.window_size
-            if len(audio_16k) - self.vad.window_size < upper:
-                upper = len(audio_16k)
-            audio_16k_chunk = audio_16k[i:upper]
+            if len(audio_16k_np) - self.vad.window_size < upper:
+                upper = len(audio_16k_np)
+            audio_16k_chunk = audio_16k_np[i:upper]
             vad_result = self.vad(audio_16k_chunk)
             if vad_result:
                 # TODO (Matthew): Can we send telemetry via an API instead of saving to a database?
