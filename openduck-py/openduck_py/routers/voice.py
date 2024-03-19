@@ -287,13 +287,14 @@ class ResponseAgent:
 
             # NOTE(zach): retries
             response = None
-            for _ in range(3):
+            for _retry in range(3):
                 try:
                     response = await acompletion(
                         CHAT_MODEL, messages, temperature=0.3, stream=True
                     )
                 except Exception:
-                    raise
+                    if _retry == 2:
+                        raise
                 else:
                     break
             complete_sentence = ""
