@@ -83,67 +83,47 @@ function Tile({
 }) {
   const videoState = useVideoTrack(id);
 
-  let containerCssClasses = "rounded-lg overflow-hidden shadow-lg m-2 ";
+  let containerCssClasses =
+    "rounded-lg overflow-hidden shadow-lg m-2 border-2 ";
   containerCssClasses += isScreenShare ? "bg-blue-100" : "bg-gray-100";
 
   if (isLocal) {
-    containerCssClasses += " border-2 border-green-500";
+    containerCssClasses += " border-green-500 ";
     if (isAlone) {
       containerCssClasses += " opacity-50";
     }
+  } else {
+    containerCssClasses += " border-gray-300 ";
   }
 
   if (videoState.isOff) {
     containerCssClasses += " bg-gray-300";
   }
 
-  let micIconClasses = "absolute bottom-4 right-4 ";
-  micIconClasses += micOn ? "text-green-500" : "text-red-500";
+  let micButtonClasses = "absolute bottom-4 right-4 px-2 py-1 ";
+  micButtonClasses += micOn
+    ? "bg-green-500 text-white"
+    : "bg-red-500 text-white";
 
   return (
-    <div
-      className={containerCssClasses}
-      onClick={toggleMic ? toggleMic : undefined}
-    >
-      <div className="p-4 relative">
+    <div className={containerCssClasses}>
+      <div className="flex h-16 p-4 flex-row items-center">
         {!isScreenShare && <Username id={id} isLocal={isLocal} />}
         {isLocal && (
-          <span className={micIconClasses}>
-            {micOn ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 14l9-2-9-2m0 0l-9 2 9 2zm0-2V6a2 2 0 00-2-2 1 1 0 010-2 4 4 0 014 4v6z"
-                />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 14l9-2-9-2m0 0l-9 2 9 2zm0-2V6a2 2 0 00-2-2 1 1 0 010-2 4 4 0 014 4v6zm-6 14l6-6 6 6"
-                />
-              </svg>
-            )}
-          </span>
+          <Button
+            variant={micOn ? "success" : "danger"}
+            className={"text-xs ml-4"}
+            // className={micButtonClasses}
+            onClick={toggleMic}
+          >
+            {micOn ? "unmute" : "mute"}
+          </Button>
         )}
       </div>
     </div>
   );
 }
+
 function Spinner() {
   return (
     <svg
