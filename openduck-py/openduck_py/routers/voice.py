@@ -25,6 +25,7 @@ from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.settings import (
     CHAT_MODEL,
+    CHAT_MODEL_GPT4,
     CHUNK_SIZE,
     LOG_TO_SLACK,
     ML_API_URL,
@@ -259,7 +260,7 @@ class ResponseAgent:
 
             system_prompt = {
                 "role": "system",
-                "content": prompt("system-prompt"),
+                "content": prompt("most-interesting-bot/system-prompt"),
             }
             new_message = {"role": "user", "content": transcription}
 
@@ -284,7 +285,12 @@ class ResponseAgent:
             for _retry in range(3):
                 try:
                     response = await acompletion(
-                        CHAT_MODEL, messages, temperature=0.3, stream=True
+                        # CHAT_MODEL, messages, temperature=0.3, stream=True
+                        CHAT_MODEL_GPT4,
+                        messages,
+                        # temperature=0.3,
+                        temperature=1,
+                        stream=True,
                     )
                 except Exception:
                     if _retry == 2:

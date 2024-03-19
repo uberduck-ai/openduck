@@ -10,6 +10,7 @@ ML_API_URL = os.environ["ML_API_URL"]
 CHUNK_SIZE = 10240
 LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
 CHAT_MODEL = "azure/gpt-35-turbo-deployment"
+CHAT_MODEL_GPT4 = "azure/gpt-4-deployment"
 
 # to not break existing env files
 os.environ["AZURE_API_KEY"] = os.getenv("AZURE_OPENAI_API_KEY")
