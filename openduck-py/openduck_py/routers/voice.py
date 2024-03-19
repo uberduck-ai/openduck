@@ -33,15 +33,8 @@ from openduck_py.settings import (
     WS_SAMPLE_RATE,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
-from openduck_py.utils.speaker_identification import load_pipelines
 from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
 from openduck_py.logging.slack import log_audio_to_slack
-
-
-try:
-    pipeline, inference = load_pipelines()
-except OSError:
-    pipeline, inference = load_pipelines()
 
 with open("aec-cartoon-degraded.wav", "wb") as f:
     f.write(
@@ -50,7 +43,6 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
         ).content
     )
 
-speaker_embedding = inference("aec-cartoon-degraded.wav")
 audio_router = APIRouter(prefix="/audio")
 
 Daily.init()
