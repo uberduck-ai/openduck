@@ -49,16 +49,3 @@ async def text_to_speech(tts_input: TTSInput):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-app = FastAPI(title="ML Services for Openduck")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(ml_router)

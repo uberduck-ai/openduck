@@ -15,6 +15,10 @@ import {
 } from "@daily-co/daily-react";
 import DailyIframe, { DailyCall } from "@daily-co/daily-js";
 
+const apiHost = process.env.NEXT_PUBLIC_API_URL;
+
+console.log("API HOST: ", apiHost);
+
 const refreshPage = () => {
   console.log(
     "make sure to allow access to your microphone and camera in your browser's permissions"
@@ -51,7 +55,7 @@ function UserMediaError() {
   );
 }
 
-function Username({ id, isLocal }) {
+function Username({ id, isLocal }: { id: string; isLocal: boolean }) {
   const username = useParticipantProperty(id, "user_name");
 
   return (
@@ -65,7 +69,7 @@ function Username({ id, isLocal }) {
 function Tile({
   id,
   isScreenShare,
-  isLocal,
+  isLocal = false,
   isAlone,
 }: {
   id: string;
@@ -98,6 +102,48 @@ function Tile({
   );
 }
 
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant: "success" | "danger" | "primary" | "secondary";
+  children: React.ReactNode;
+}
+
+function Button({ variant, children, ...rest }: ButtonProps) {
+  const baseStyle = "px-4 py-2 rounded font-bold text-white ";
+  let variantStyle = "";
+  let additionalClasses = rest.className ? ` ${rest.className}` : "";
+
+  switch (variant) {
+    case "success":
+      variantStyle = "bg-green-500 hover:bg-green-600";
+      break;
+    case "danger":
+      variantStyle = "bg-red-500 hover:bg-red-600";
+      break;
+    case "primary":
+      variantStyle = rest.disabled
+        ? "bg-blue-300"
+        : "bg-blue-500 hover:bg-blue-600";
+      break;
+    case "secondary":
+      variantStyle = "bg-gray-500 hover:bg-gray-600 text-black";
+      break;
+    default:
+      variantStyle = "bg-gray-200"; // Fallback style
+  }
+
+  // Exclude className from rest since it's already applied
+  const { className, ...restProps } = rest;
+
+  return (
+    <button
+      className={`${baseStyle} ${variantStyle}${additionalClasses}`}
+      {...restProps}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Call() {
   const [getUserMediaError, setGetUserMediaError] = useState(false);
 
@@ -126,8 +172,6 @@ function Call() {
       {isAlone && (
         <div className="text-center p-4 m-4 rounded-lg shadow-lg bg-yellow-100">
           <h1 className="text-lg font-semibold">Waiting for others</h1>
-          <p className="mt-2">Invite someone by sharing this link:</p>
-          <span className="text-blue-600">{window.location.href}</span>
         </div>
       )}
     </div>
@@ -136,12 +180,8 @@ function Call() {
   return getUserMediaError ? <UserMediaError /> : renderCallScreen();
 }
 
-const AudioCall = ({ callObject }) => {
-  // const [callObject, setCallObject] = useState<DailyCall | null>(null);
-  // const callObject = useCallObject({}, () => false);
-  const [roomUrl, setRoomUrl] = useState(
-    "https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug"
-  );
+const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
+  const [roomUrl, setRoomUrl] = useState<string>("");
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const meetingState = useMeetingState();
@@ -169,13 +209,11 @@ const AudioCall = ({ callObject }) => {
 
   const startHairCheck = useCallback(
     async (url: string) => {
-      // const newCallObject = DailyIframe.createCallObject();
-      setRoomUrl(url);
+      if (!url) return;
       if (!callObject) {
         console.log("No call object");
         return;
       }
-      // setCallObject(newCallObject);
       await callObject.preAuth({ url });
       await callObject.startCamera();
     },
@@ -183,8 +221,9 @@ const AudioCall = ({ callObject }) => {
   );
 
   const createRoom = useCallback(async () => {
+    console.log("creatre rom");
     try {
-      const response = await fetch("http://localhost:8000/audio/start", {
+      const response = await fetch(`${apiHost}/audio/start`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -216,22 +255,16 @@ const AudioCall = ({ callObject }) => {
         placeholder="Enter room URL"
       />
       <div className="flex space-x-2">
-        <button
-          className="px-4 py-2 rounded font-bold bg-green-500 hover:bg-green-600 text-white"
-          onClick={createRoom}
-        >
+        <Button variant="success" onClick={createRoom}>
           Create Room
-        </button>
+        </Button>
         {joinedRoom ? (
-          <button
-            className="px-4 py-2 rounded font-bold bg-red-500 hover:bg-red-600 text-white"
-            onClick={leaveCall}
-          >
+          <Button variant="danger" onClick={leaveCall}>
             Leave Room
-          </button>
+          </Button>
         ) : (
-          <button
-            className={`px-4 py-2 rounded font-bold ${
+          <Button
+            className={`${
               roomUrl &&
               roomUrl.match(
                 /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/
@@ -246,16 +279,14 @@ const AudioCall = ({ callObject }) => {
                 /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/
               )
             }
+            variant="primary"
           >
             Join Room
-          </button>
+          </Button>
         )}
-        <button
-          className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-black rounded"
-          onClick={toggleMic}
-        >
+        <Button variant="secondary" onClick={toggleMic}>
           {micOn ? "Mic On" : "Mic Off"}
-        </button>
+        </Button>
       </div>
       <div>
         <Call />

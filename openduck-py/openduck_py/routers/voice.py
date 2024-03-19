@@ -3,7 +3,7 @@ import os
 import re
 import multiprocessing
 from time import time
-from typing import Optional, Dict, Literal
+from typing import Optional, Dict, Literal, AsyncIterator, AsyncGenerator
 import wave
 import requests
 from pathlib import Path
@@ -19,21 +19,23 @@ from daily import *
 from litellm import acompletion
 import httpx
 
+from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.settings import (
-    IS_DEV,
-    WS_SAMPLE_RATE,
-    OUTPUT_SAMPLE_RATE,
-    CHUNK_SIZE,
-    LOG_TO_SLACK,
     CHAT_MODEL,
+    CHUNK_SIZE,
+    IS_DEV,
+    LOG_TO_SLACK,
     ML_API_URL,
+    OUTPUT_SAMPLE_RATE,
+    WS_SAMPLE_RATE,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
 from openduck_py.utils.speaker_identification import load_pipelines
+from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
 from openduck_py.logging.slack import log_audio_to_slack
 
 if IS_DEV:
@@ -84,12 +86,13 @@ async def _transcribe(audio_data: np.ndarray) -> str:
         raise Exception(f"Transcription failed with status code {response.status_code}")
 
 
-async def _inference(sentence: str) -> np.ndarray:
+async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
     url = f"{ML_API_URL}/ml/tts"
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json={"text": sentence})
-        audio_chunk_bytes = response.read()
-    return audio_chunk_bytes
+
+        async for chunk in response.aiter_bytes(CHUNK_SIZE):
+            yield chunk
 
 
 class WavAppender:
@@ -162,6 +165,7 @@ class ResponseAgent:
         session_id: str,
         input_audio_format: Literal["float32", "int32", "int16"] = "float32",
         record=False,
+        tts_config: TTSConfig = None,
     ):
         self.session_id = session_id
         self.response_queue = asyncio.Queue()
@@ -173,6 +177,10 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+
+        if tts_config is None:
+            tts_config = TTSConfig()
+        self.tts_config = tts_config
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -316,18 +324,36 @@ class ResponseAgent:
             print("Echo detected, not sending response.")
             return
 
-        normalized = normalize_text(response_text)
-        t_normalize = time()
-        await log_event(
-            db,
-            self.session_id,
-            "normalized_text",
-            meta={"text": normalized},
-            latency=t_normalize - t_chat,
-        )
+        if self.tts_config.provider == "local":
 
-        audio_chunk_bytes = await _inference(normalized)
+            normalized = normalize_text(response_text)
+            t_normalize = time()
+            await log_event(
+                db,
+                self.session_id,
+                "normalized_text",
+                meta={"text": normalized},
+                latency=t_normalize - t_chat,
+            )
+
+            audio_bytes_iter = _inference(normalized)
+        elif self.tts_config.provider == "elevenlabs":
+            t_normalize = time()
+            await log_event(
+                db,
+                self.session_id,
+                "normalized_text",
+                meta={"text": response_text},
+                latency=t_normalize - t_chat,
+            )
+            audio_bytes_iter = aio_elevenlabs_tts(response_text)
+
         t_styletts = time()
+
+        audio_chunk_bytes = bytes()
+        async for chunk in audio_bytes_iter:
+            await self.response_queue.put(chunk)
+            audio_chunk_bytes += chunk
         await log_event(
             db,
             self.session_id,
@@ -335,10 +361,6 @@ class ResponseAgent:
             audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
             latency=t_styletts - t_normalize,
         )
-
-        for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
-            chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
-            await self.response_queue.put(chunk)
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
@@ -432,7 +454,10 @@ async def audio_response(
 ):
     await websocket.accept()
 
-    responder = ResponseAgent(session_id=session_id, record=record)
+    responder = ResponseAgent(
+        session_id=session_id,
+        record=record,
+    )
     asyncio.create_task(websocket_consumer(responder.response_queue, websocket))
 
     try:
@@ -495,7 +520,10 @@ async def connect_daily(
         },
     )
     responder = ResponseAgent(
-        session_id=session_id, record=False, input_audio_format="int16"
+        session_id=session_id,
+        record=False,
+        input_audio_format="int16",
+        tts_config=TTSConfig(provider="elevenlabs"),
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
     while True:
