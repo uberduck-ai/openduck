@@ -60,6 +60,3 @@ app.add_middleware(
 app.include_router(ml_router)
 
 
-@app.get("/status")
-def status():
-    return dict(status="OK")
