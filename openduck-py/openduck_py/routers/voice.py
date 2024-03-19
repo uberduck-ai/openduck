@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
@@ -69,7 +69,10 @@ async def _transcribe(audio_data: np.ndarray) -> str:
     async with httpx.AsyncClient() as client:
         response = await client.post(url, files=files)
 
-    return response.json()["text"]
+    if response.status_code == 200:
+        return response.json()["text"]
+    else:
+        raise Exception(f"Transcription failed with status code {response.status_code}")
 
 
 async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
@@ -86,11 +89,10 @@ async def _normalize_text(text: str) -> str:
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json={"text": text})
 
-    if response.status_code != 200:
-        raise HTTPException(
-            status_code=response.status_code, detail="Normalization service failed"
-        )
-    return response.json()["text"]
+    if response.status_code == 200:
+        return response.json()["text"]
+    else:
+        raise Exception(f"Normalization failed with status code {response.status_code}")
 
 
 class WavAppender:
