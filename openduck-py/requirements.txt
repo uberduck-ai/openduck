@@ -17,8 +17,6 @@ numpy
 openai
 openai-whisper
 phonemizer
-pyannote.core
-pyannote.audio
 pylru
 pytest
 pytest-mock
