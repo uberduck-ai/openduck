@@ -55,7 +55,7 @@ function UserMediaError() {
   );
 }
 
-function Username({ id, isLocal }) {
+function Username({ id, isLocal }: { id: string; isLocal: boolean }) {
   const username = useParticipantProperty(id, "user_name");
 
   return (
@@ -69,7 +69,7 @@ function Username({ id, isLocal }) {
 function Tile({
   id,
   isScreenShare,
-  isLocal,
+  isLocal = false,
   isAlone,
 }: {
   id: string;
