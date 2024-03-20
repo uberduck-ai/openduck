@@ -295,7 +295,7 @@ class ResponseAgent:
                         CHAT_MODEL_GPT4,
                         messages,
                         # temperature=0.3,
-                        temperature=1,
+                        temperature=1.4,
                         stream=True,
                     )
                 except Exception:
