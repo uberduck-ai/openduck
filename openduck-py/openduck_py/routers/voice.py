@@ -33,7 +33,11 @@ from openduck_py.settings import (
     WS_SAMPLE_RATE,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
-from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
+from openduck_py.utils.third_party_tts import (
+    aio_elevenlabs_tts,
+    ELEVENLABS_VIKRAM,
+    ELEVENLABS_CHRIS,
+)
 from openduck_py.logging.slack import log_audio_to_slack
 
 with open("aec-cartoon-degraded.wav", "wb") as f:
@@ -355,7 +359,9 @@ class ResponseAgent:
                 meta={"text": response_text},
                 latency=t_normalize - t_chat,
             )
-            audio_bytes_iter = aio_elevenlabs_tts(response_text)
+            audio_bytes_iter = aio_elevenlabs_tts(
+                response_text, voice_id=self.tts_config.voice_id
+            )
 
         t_styletts = time()
 
@@ -443,7 +449,8 @@ async def create_room_and_start():
 
     # Podcast host
     process = multiprocessing.Process(
-        target=run_connect_daily, args=(room_info["url"], "podcast_host")
+        target=run_connect_daily,
+        args=(room_info["url"], "podcast_host", ELEVENLABS_VIKRAM),
     )
     process.start()
     print("started process: ", process.pid)
@@ -451,7 +458,8 @@ async def create_room_and_start():
 
     # Podcast guest
     process = multiprocessing.Process(
-        target=run_connect_daily, args=(room_info["url"], "podcast_guest")
+        target=run_connect_daily,
+        args=(room_info["url"], "podcast_guest", ELEVENLABS_CHRIS),
     )
     process.start()
     print("started process: ", process.pid)
@@ -506,7 +514,9 @@ async def audio_response(
 
 
 async def connect_daily(
-    room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug", prompt=None
+    room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+    prompt=None,
+    voice_id=None,
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
@@ -542,7 +552,7 @@ async def connect_daily(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
-        tts_config=TTSConfig(provider="elevenlabs"),
+        tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         system_prompt=prompt,
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
@@ -567,8 +577,8 @@ async def connect_daily(
         await log_event(db, session_id, "ended_session")
 
 
-def run_connect_daily(room_url: str, prompt: str):
-    asyncio.run(connect_daily(room=room_url, prompt=prompt))
+def run_connect_daily(room_url: str, prompt: str, voice_id: Optional[str] = None):
+    asyncio.run(connect_daily(room=room_url, prompt=prompt, voice_id=voice_id))
 
 
 if __name__ == "__main__":
