@@ -8,6 +8,7 @@ fastapi
 Flask 
 Flask-Admin 
 Flask-SQLAlchemy
+Jinja2
 librosa
 litellm
 munch

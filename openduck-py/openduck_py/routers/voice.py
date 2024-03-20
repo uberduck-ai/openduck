@@ -163,6 +163,7 @@ class ResponseAgent:
         input_audio_format: Literal["float32", "int32", "int16"] = "float32",
         record=False,
         tts_config: TTSConfig = None,
+        context: Optional[dict] = None,
     ):
         self.session_id = session_id
         self.response_queue = asyncio.Queue()
@@ -174,6 +175,10 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+
+        if context is None:
+            context = {}
+        self.context = context
 
         if tts_config is None:
             tts_config = TTSConfig()
@@ -507,9 +512,11 @@ async def connect_daily(
 
     event_handler = CustomEventHandler()
     client = event_handler.client
+    client.set_user_name("Vikram (AI)")
     client.update_subscription_profiles(
         {"base": {"camera": "unsubscribed", "microphone": "subscribed"}}
     )
+    print("PARTICIPANTS: " client.participants())
     client.join(
         meeting_url=room,
         client_settings={

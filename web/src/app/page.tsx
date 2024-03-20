@@ -243,6 +243,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const [roomUrl, setRoomUrl] = useState<string>("");
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [micOn, setMicOn] = useState(true);
+  const [userName, setUserName] = useState<string>("");
 
   const toggleMic = () => {
     callObject?.setLocalAudio(!callObject?.localAudio());
@@ -269,7 +270,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         if (room.url) {
           console.log("Room created and joining:", room.url);
           setRoomUrl(room.url);
-          callObject?.join({ url: room.url, userName: "User" });
+          callObject?.join({ url: room.url, userName: userName });
           setJoinedRoom(true);
         } else {
           console.error("Failed to create room");
@@ -278,17 +279,28 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         console.error("Error creating room:", error);
       }
     }
-  }, [callObject, roomUrl]);
+  }, [callObject, roomUrl, userName]);
 
   return (
     <div className="flex flex-col items-center space-y-4 p-4">
+      <input
+        type="text"
+        placeholder="Your Name"
+        value={userName}
+        onChange={(e) => setUserName(e.target.value)}
+        className="text-center p-2 rounded-lg border-2 border-gray-300 mb-4"
+        disabled={joinedRoom}
+      />
       <button
-        className="orb-button bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform hover:scale-110 transition-transform duration-300 ease-in-out"
+        className={`orb-button min-w-32 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform transition-transform duration-300 ease-in-out ${
+          !userName && "opacity-50 cursor-not-allowed"
+        }`}
         onClick={handleOrbClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
+        disabled={!userName}
       >
-        {joinedRoom ? "Leave Room" : "Create & Join Room"}
+        {joinedRoom ? "Leave Room" : "Start"}
       </button>
       {roomUrl && false && <div className="text-sm">Room URL: {roomUrl}</div>}
       <div>
@@ -298,11 +310,15 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
     </div>
   );
 };
+
 export default function Home() {
   const callObject = useCallObject({});
   return (
     <DailyProvider callObject={callObject}>
       <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <h1 className="text-2xl font-bold text-center mb-4">
+          An AI podcast featuring you and an infinite cast of AI friends
+        </h1>
         <AudioCall callObject={callObject} />
       </main>
     </DailyProvider>
