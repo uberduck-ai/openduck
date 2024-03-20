@@ -33,7 +33,11 @@ from openduck_py.settings import (
     WS_SAMPLE_RATE,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
-from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
+from openduck_py.utils.third_party_tts import (
+    aio_elevenlabs_tts,
+    ELEVENLABS_VIKRAM,
+    ELEVENLABS_CHRIS,
+)
 from openduck_py.logging.slack import log_audio_to_slack
 
 with open("aec-cartoon-degraded.wav", "wb") as f:
@@ -163,6 +167,7 @@ class ResponseAgent:
         input_audio_format: Literal["float32", "int32", "int16"] = "float32",
         record=False,
         tts_config: TTSConfig = None,
+        system_prompt: str = "system-prompt",
         context: Optional[dict] = None,
     ):
         self.session_id = session_id
@@ -175,6 +180,7 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+        self.system_prompt = system_prompt
 
         if context is None:
             context = {}
@@ -265,7 +271,7 @@ class ResponseAgent:
 
             system_prompt = {
                 "role": "system",
-                "content": prompt("most-interesting-bot/system-prompt"),
+                "content": prompt(f"most-interesting-bot/{self.system_prompt}"),
             }
             new_message = {"role": "user", "content": transcription}
 
@@ -294,7 +300,7 @@ class ResponseAgent:
                         CHAT_MODEL_GPT4,
                         messages,
                         # temperature=0.3,
-                        temperature=1,
+                        temperature=1.4,
                         stream=True,
                     )
                 except Exception:
@@ -358,7 +364,9 @@ class ResponseAgent:
                 meta={"text": response_text},
                 latency=t_normalize - t_chat,
             )
-            audio_bytes_iter = aio_elevenlabs_tts(response_text)
+            audio_bytes_iter = aio_elevenlabs_tts(
+                response_text, voice_id=self.tts_config.voice_id
+            )
 
         t_styletts = time()
 
@@ -444,12 +452,24 @@ async def create_room_and_start():
     room_info = await create_room()
     print("created room")
 
+    # Podcast host
     process = multiprocessing.Process(
-        target=run_connect_daily, args=(room_info["url"],)
+        target=run_connect_daily,
+        args=(room_info["url"], "podcast_host", ELEVENLABS_VIKRAM),
     )
     process.start()
     print("started process: ", process.pid)
     processes[process.pid] = process
+
+    # Podcast guest
+    process = multiprocessing.Process(
+        target=run_connect_daily,
+        args=(room_info["url"], "podcast_guest", ELEVENLABS_CHRIS),
+    )
+    process.start()
+    print("started process: ", process.pid)
+    processes[process.pid] = process
+
     return RoomCreateResponse(
         url=room_info["url"],
         name=room_info["name"],
@@ -500,6 +520,8 @@ async def audio_response(
 
 async def connect_daily(
     room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+    prompt=None,
+    voice_id=None,
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
@@ -537,7 +559,8 @@ async def connect_daily(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
-        tts_config=TTSConfig(provider="elevenlabs"),
+        tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
+        system_prompt=prompt,
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
     while True:
@@ -561,8 +584,8 @@ async def connect_daily(
         await log_event(db, session_id, "ended_session")
 
 
-def run_connect_daily(room_url: str):
-    asyncio.run(connect_daily(room=room_url))
+def run_connect_daily(room_url: str, prompt: str, voice_id: Optional[str] = None):
+    asyncio.run(connect_daily(room=room_url, prompt=prompt, voice_id=voice_id))
 
 
 if __name__ == "__main__":
