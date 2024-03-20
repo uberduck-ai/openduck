@@ -609,7 +609,7 @@ async def connect_daily(
                     f"most-interesting-bot/intro-prompt",
                     {
                         "my_name": my_name,
-                        "participant_names": participant_names,
+                        "participant_names": " and ".join(participant_names),
                     },
                 ),
             )
