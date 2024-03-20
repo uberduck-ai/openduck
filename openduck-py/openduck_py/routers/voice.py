@@ -338,57 +338,6 @@ class ResponseAgent:
                 t_whisper,
                 {"role": "user", "content": transcription},
             )
-            # new_message = {"role": "user", "content": transcription}
-
-            # chat = (
-            #     await db.execute(
-            #         select(DBChatHistory).where(
-            #             DBChatHistory.session_id == self.session_id
-            #         )
-            #     )
-            # ).scalar_one_or_none()
-            # if chat is None:
-            #     chat = DBChatHistory(
-            #         session_id=self.session_id,
-            #         history_json={"messages": [system_prompt]},
-            #     )
-            #     db.add(chat)
-            # messages = chat.history_json["messages"]
-            # messages.append(new_message)
-
-            # # NOTE(zach): retries
-            # response = None
-            # for _retry in range(3):
-            #     try:
-            #         response = await acompletion(
-            #             # CHAT_MODEL, messages, temperature=0.3, stream=True
-            #             CHAT_MODEL_GPT4,
-            #             messages,
-            #             # temperature=0.3,
-            #             temperature=1.2,
-            #             stream=True,
-            #         )
-            #     except Exception:
-            #         if _retry == 2:
-            #             raise
-            #     else:
-            #         break
-            # complete_sentence = ""
-            # full_response = ""
-            # async for chunk in response:
-            #     chunk_text = chunk.choices[0].delta.content
-            #     if not chunk_text:
-            #         break
-            #     complete_sentence += chunk_text
-            #     full_response += chunk_text
-            #     # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
-            #     if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
-            #         await self.speak_response(complete_sentence, db, t_whisper)
-            #         complete_sentence = ""
-
-            # messages.append({"role": "assistant", "content": full_response})
-            # chat.history_json["messages"] = messages
-            # await db.commit()
 
     async def speak_response(
         self,
