@@ -163,6 +163,7 @@ class ResponseAgent:
         input_audio_format: Literal["float32", "int32", "int16"] = "float32",
         record=False,
         tts_config: TTSConfig = None,
+        system_prompt: str = "system-prompt",
     ):
         self.session_id = session_id
         self.response_queue = asyncio.Queue()
@@ -174,6 +175,7 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+        self.system_prompt = system_prompt
 
         if tts_config is None:
             tts_config = TTSConfig()
@@ -260,7 +262,7 @@ class ResponseAgent:
 
             system_prompt = {
                 "role": "system",
-                "content": prompt("most-interesting-bot/system-prompt"),
+                "content": prompt(f"most-interesting-bot/{self.system_prompt}"),
             }
             new_message = {"role": "user", "content": transcription}
 
@@ -439,12 +441,22 @@ async def create_room_and_start():
     room_info = await create_room()
     print("created room")
 
+    # Podcast host
     process = multiprocessing.Process(
-        target=run_connect_daily, args=(room_info["url"],)
+        target=run_connect_daily, args=(room_info["url"], "podcast_host")
     )
     process.start()
     print("started process: ", process.pid)
     processes[process.pid] = process
+
+    # Podcast guest
+    process = multiprocessing.Process(
+        target=run_connect_daily, args=(room_info["url"], "podcast_guest")
+    )
+    process.start()
+    print("started process: ", process.pid)
+    processes[process.pid] = process
+
     return RoomCreateResponse(
         url=room_info["url"],
         name=room_info["name"],
@@ -494,7 +506,7 @@ async def audio_response(
 
 
 async def connect_daily(
-    room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+    room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug", prompt=None
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
@@ -531,6 +543,7 @@ async def connect_daily(
         record=False,
         input_audio_format="int16",
         tts_config=TTSConfig(provider="elevenlabs"),
+        system_prompt=prompt,
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
     while True:
@@ -554,8 +567,8 @@ async def connect_daily(
         await log_event(db, session_id, "ended_session")
 
 
-def run_connect_daily(room_url: str):
-    asyncio.run(connect_daily(room=room_url))
+def run_connect_daily(room_url: str, prompt: str):
+    asyncio.run(connect_daily(room=room_url, prompt=prompt))
 
 
 if __name__ == "__main__":
