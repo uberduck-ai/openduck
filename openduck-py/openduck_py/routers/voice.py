@@ -251,7 +251,9 @@ class ResponseAgent:
         self, db: SessionAsync, t_whisper=None, new_message=None, system_prompt=None
     ):
         if system_prompt is None:
-            system_prompt = prompt(f"most-interesting-bot/{self.system_prompt}")
+            system_prompt = prompt(
+                f"most-interesting-bot/{self.system_prompt}", self.context
+            )
         system_prompt = {
             "role": "system",
             "content": system_prompt,
@@ -584,18 +586,22 @@ async def connect_daily(
             }
         },
     )
+    my_name = username.split(" (AI)")[0]
+    context = {
+        "my_name": my_name,
+    }
     responder = ResponseAgent(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
         tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         system_prompt=system_prompt,
+        context=context,
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
     if speak_first:
         async with SessionAsync() as db:
             participants = client.participants()
-            my_name = username.split(" (AI)")[0]
             participant_names = [
                 p["info"]["userName"].split(" (AI)")[0]
                 for p in participants.values()
