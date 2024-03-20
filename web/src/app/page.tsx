@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   DailyProvider,
   DailyAudio,
+  useActiveSpeakerId,
   useParticipantIds,
   useScreenShare,
   useDailyEvent,
@@ -73,6 +74,7 @@ function Tile({
   isAlone,
   toggleMic,
   micOn,
+  isActiveSpeaker,
 }: {
   id: string;
   isScreenShare?: boolean;
@@ -80,30 +82,35 @@ function Tile({
   isAlone?: boolean;
   toggleMic?: () => void;
   micOn?: boolean;
+  isActiveSpeaker?: boolean;
 }) {
   const videoState = useVideoTrack(id);
 
   let containerCssClasses =
-    "rounded-lg overflow-hidden shadow-lg m-2 border-2 ";
-  containerCssClasses += isScreenShare ? "bg-blue-100" : "bg-gray-100";
+    "rounded-lg overflow-hidden shadow-lg m-2 border-2 transition-all duration-500 ";
+  containerCssClasses += isScreenShare ? "bg-blue-100 " : "bg-gray-100 ";
 
   if (isLocal) {
     containerCssClasses += " border-green-500 ";
     if (isAlone) {
-      containerCssClasses += " opacity-50";
+      containerCssClasses += " opacity-50 ";
     }
   } else {
     containerCssClasses += " border-gray-300 ";
   }
 
   if (videoState.isOff) {
-    containerCssClasses += " bg-gray-300";
+    containerCssClasses += " bg-gray-300 ";
+  }
+
+  if (isActiveSpeaker) {
+    containerCssClasses += " ring-4 ring-yellow-500 ring-opacity-50 ";
   }
 
   let micButtonClasses = "absolute bottom-4 right-4 px-2 py-1 ";
   micButtonClasses += micOn
-    ? "bg-green-500 text-white"
-    : "bg-red-500 text-white";
+    ? "bg-green-500 text-white "
+    : "bg-red-500 text-white ";
 
   return (
     <div className={containerCssClasses}>
@@ -113,7 +120,6 @@ function Tile({
           <Button
             variant={micOn ? "success" : "danger"}
             className={"text-xs ml-4"}
-            // className={micButtonClasses}
             onClick={toggleMic}
           >
             {micOn ? "unmute" : "mute"}
@@ -194,6 +200,7 @@ function Button({ variant, children, ...rest }: ButtonProps) {
 function Call({ toggleMic, micOn }: { toggleMic: () => void; micOn: boolean }) {
   const [getUserMediaError, setGetUserMediaError] = useState(false);
   const meetingState = useMeetingState();
+  const activeSpeakerId = useActiveSpeakerId();
 
   console.log("Meeting State: ", meetingState);
 
@@ -219,13 +226,19 @@ function Call({ toggleMic, micOn }: { toggleMic: () => void; micOn: boolean }) {
           isAlone={isAlone}
           toggleMic={toggleMic}
           micOn={micOn}
+          isActiveSpeaker={activeSpeakerId === localSessionId}
         />
       )}
       {remoteParticipantIds.map((id) => (
-        <Tile key={id} id={id} />
+        <Tile key={id} id={id} isActiveSpeaker={activeSpeakerId === id} />
       ))}
       {screens.map((screen) => (
-        <Tile key={screen.screenId} id={screen.session_id} isScreenShare />
+        <Tile
+          key={screen.screenId}
+          id={screen.session_id}
+          isScreenShare
+          isActiveSpeaker={activeSpeakerId === screen.session_id}
+        />
       ))}
       {isAlone && meetingState === "joined-meeting" && (
         <div className="text-center p-4 m-4 rounded-lg shadow-lg bg-yellow-100 flex flex-col items-center">
@@ -243,18 +256,20 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const [roomUrl, setRoomUrl] = useState<string>("");
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [micOn, setMicOn] = useState(true);
+  const [userName, setUserName] = useState<string>("");
 
   const toggleMic = () => {
     callObject?.setLocalAudio(!callObject?.localAudio());
     setMicOn(!micOn);
   };
 
-  const leaveCall = useCallback(() => {
-    callObject?.leave();
+  const leaveCall = useCallback(async () => {
+    await callObject?.leave();
     setJoinedRoom(false);
   }, [callObject]);
 
   const handleOrbClick = useCallback(async () => {
+    console.log("hi", joinedRoom);
     if (joinedRoom) {
       leaveCall();
     } else {
@@ -269,7 +284,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         if (room.url) {
           console.log("Room created and joining:", room.url);
           setRoomUrl(room.url);
-          callObject?.join({ url: room.url, userName: "User" });
+          callObject?.join({ url: room.url, userName: userName });
           setJoinedRoom(true);
         } else {
           console.error("Failed to create room");
@@ -278,17 +293,28 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         console.error("Error creating room:", error);
       }
     }
-  }, [callObject, roomUrl]);
+  }, [callObject, roomUrl, userName, joinedRoom]);
 
   return (
     <div className="flex flex-col items-center space-y-4 p-4">
+      <input
+        type="text"
+        placeholder="Your Name"
+        value={userName}
+        onChange={(e) => setUserName(e.target.value)}
+        className="text-center p-2 rounded-lg border-2 border-gray-300 mb-4"
+        disabled={joinedRoom}
+      />
       <button
-        className="orb-button bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform hover:scale-110 transition-transform duration-300 ease-in-out"
+        className={`orb-button min-w-32 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform transition-transform duration-300 ease-in-out ${
+          !userName && "opacity-50 cursor-not-allowed"
+        }`}
         onClick={handleOrbClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
+        disabled={!userName}
       >
-        {joinedRoom ? "Leave Room" : "Create & Join Room"}
+        {joinedRoom ? "Leave Room" : "Start"}
       </button>
       {roomUrl && false && <div className="text-sm">Room URL: {roomUrl}</div>}
       <div>
@@ -298,11 +324,15 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
     </div>
   );
 };
+
 export default function Home() {
   const callObject = useCallObject({});
   return (
     <DailyProvider callObject={callObject}>
       <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <h1 className="text-2xl font-bold text-center mb-4">
+          An infinite podcast featuring you and a cast of AI friends
+        </h1>
         <AudioCall callObject={callObject} />
       </main>
     </DailyProvider>

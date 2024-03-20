@@ -168,6 +168,7 @@ class ResponseAgent:
         record=False,
         tts_config: TTSConfig = None,
         system_prompt: str = "system-prompt",
+        context: Optional[dict] = None,
     ):
         self.session_id = session_id
         self.response_queue = asyncio.Queue()
@@ -180,6 +181,10 @@ class ResponseAgent:
         self.time_of_last_activity = time()
         self.response_task = None
         self.system_prompt = system_prompt
+
+        if context is None:
+            context = {}
+        self.context = context
 
         if tts_config is None:
             tts_config = TTSConfig()
@@ -242,6 +247,68 @@ class ResponseAgent:
                                 self.interrupt(self.response_task)
             i = upper
 
+    async def _generate_and_speak(
+        self, db: SessionAsync, t_whisper=None, new_message=None, system_prompt=None
+    ):
+        if system_prompt is None:
+            system_prompt = prompt(
+                f"most-interesting-bot/{self.system_prompt}", self.context
+            )
+        system_prompt = {
+            "role": "system",
+            "content": system_prompt,
+        }
+        # new_message = {"role": "user", "content": transcription}
+
+        chat = (
+            await db.execute(
+                select(DBChatHistory).where(DBChatHistory.session_id == self.session_id)
+            )
+        ).scalar_one_or_none()
+        if chat is None:
+            chat = DBChatHistory(
+                session_id=self.session_id,
+                history_json={"messages": [system_prompt]},
+            )
+            db.add(chat)
+        messages = chat.history_json["messages"]
+        if new_message is not None:
+            messages.append(new_message)
+
+        # NOTE(zach): retries
+        response = None
+        for _retry in range(3):
+            try:
+                response = await acompletion(
+                    # CHAT_MODEL, messages, temperature=0.3, stream=True
+                    CHAT_MODEL_GPT4,
+                    messages,
+                    # temperature=0.3,
+                    temperature=1.2,
+                    stream=True,
+                )
+            except Exception:
+                if _retry == 2:
+                    raise
+            else:
+                break
+        complete_sentence = ""
+        full_response = ""
+        async for chunk in response:
+            chunk_text = chunk.choices[0].delta.content
+            if not chunk_text:
+                break
+            complete_sentence += chunk_text
+            full_response += chunk_text
+            # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
+            if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
+                await self.speak_response(complete_sentence, db, t_whisper)
+                complete_sentence = ""
+
+        messages.append({"role": "assistant", "content": full_response})
+        chat.history_json["messages"] = messages
+        await db.commit()
+
     async def start_response(
         self,
         audio_data: np.ndarray,
@@ -268,57 +335,11 @@ class ResponseAgent:
                 "role": "system",
                 "content": prompt(f"most-interesting-bot/{self.system_prompt}"),
             }
-            new_message = {"role": "user", "content": transcription}
-
-            chat = (
-                await db.execute(
-                    select(DBChatHistory).where(
-                        DBChatHistory.session_id == self.session_id
-                    )
-                )
-            ).scalar_one_or_none()
-            if chat is None:
-                chat = DBChatHistory(
-                    session_id=self.session_id,
-                    history_json={"messages": [system_prompt]},
-                )
-                db.add(chat)
-            messages = chat.history_json["messages"]
-            messages.append(new_message)
-
-            # NOTE(zach): retries
-            response = None
-            for _retry in range(3):
-                try:
-                    response = await acompletion(
-                        # CHAT_MODEL, messages, temperature=0.3, stream=True
-                        CHAT_MODEL_GPT4,
-                        messages,
-                        # temperature=0.3,
-                        temperature=1.4,
-                        stream=True,
-                    )
-                except Exception:
-                    if _retry == 2:
-                        raise
-                else:
-                    break
-            complete_sentence = ""
-            full_response = ""
-            async for chunk in response:
-                chunk_text = chunk.choices[0].delta.content
-                if not chunk_text:
-                    break
-                complete_sentence += chunk_text
-                full_response += chunk_text
-                # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
-                if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
-                    await self.speak_response(complete_sentence, db, t_whisper)
-                    complete_sentence = ""
-
-            messages.append({"role": "assistant", "content": full_response})
-            chat.history_json["messages"] = messages
-            await db.commit()
+            await self._generate_and_speak(
+                db,
+                t_whisper,
+                {"role": "user", "content": transcription},
+            )
 
     async def speak_response(
         self,
@@ -450,7 +471,13 @@ async def create_room_and_start():
     # Podcast host
     process = multiprocessing.Process(
         target=run_connect_daily,
-        args=(room_info["url"], "podcast_host", ELEVENLABS_VIKRAM),
+        kwargs=dict(
+            room_url=room_info["url"],
+            username="Vikram (AI)",
+            prompt="podcast_host",
+            voice_id=ELEVENLABS_VIKRAM,
+            speak_first=True,
+        ),
     )
     process.start()
     print("started process: ", process.pid)
@@ -459,7 +486,12 @@ async def create_room_and_start():
     # Podcast guest
     process = multiprocessing.Process(
         target=run_connect_daily,
-        args=(room_info["url"], "podcast_guest", ELEVENLABS_CHRIS),
+        kwargs=dict(
+            room_url=room_info["url"],
+            username="Chris (AI)",
+            prompt="podcast_guest",
+            voice_id=ELEVENLABS_CHRIS,
+        ),
     )
     process.start()
     print("started process: ", process.pid)
@@ -515,8 +547,10 @@ async def audio_response(
 
 async def connect_daily(
     room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
-    prompt=None,
+    username: str = "host (AI)",
+    system_prompt=None,
     voice_id=None,
+    speak_first=False,
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
@@ -529,9 +563,13 @@ async def connect_daily(
 
     event_handler = CustomEventHandler()
     client = event_handler.client
+
+    assert username.endswith(" (AI)"), "Username must end with ' (AI)'"
+    client.set_user_name(username)
     client.update_subscription_profiles(
         {"base": {"camera": "unsubscribed", "microphone": "subscribed"}}
     )
+    print("PARTICIPANTS: ", client.participants())
     client.join(
         meeting_url=room,
         client_settings={
@@ -548,14 +586,39 @@ async def connect_daily(
             }
         },
     )
+    my_name = username.split(" (AI)")[0]
+    context = {
+        "my_name": my_name,
+    }
     responder = ResponseAgent(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
         tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
-        system_prompt=prompt,
+        system_prompt=system_prompt,
+        context=context,
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
+    if speak_first:
+        async with SessionAsync() as db:
+            participants = client.participants()
+            participant_names = [
+                p["info"]["userName"].split(" (AI)")[0]
+                for p in participants.values()
+                if not p["info"]["isLocal"]
+            ]
+            await responder._generate_and_speak(
+                db,
+                t_whisper=time(),
+                new_message=None,
+                system_prompt=prompt(
+                    f"most-interesting-bot/intro-prompt",
+                    {
+                        "my_name": my_name,
+                        "participant_names": " and ".join(participant_names),
+                    },
+                ),
+            )
     while True:
         if _check_for_exceptions(responder.response_task):
             responder.audio_data = []
@@ -577,8 +640,22 @@ async def connect_daily(
         await log_event(db, session_id, "ended_session")
 
 
-def run_connect_daily(room_url: str, prompt: str, voice_id: Optional[str] = None):
-    asyncio.run(connect_daily(room=room_url, prompt=prompt, voice_id=voice_id))
+def run_connect_daily(
+    room_url: str,
+    username: str,
+    prompt: str,
+    voice_id: Optional[str] = None,
+    speak_first=False,
+):
+    asyncio.run(
+        connect_daily(
+            room=room_url,
+            username=username,
+            system_prompt=prompt,
+            voice_id=voice_id,
+            speak_first=speak_first,
+        )
+    )
 
 
 if __name__ == "__main__":
