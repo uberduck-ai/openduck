@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   DailyProvider,
   DailyAudio,
+  useActiveSpeakerId,
   useParticipantIds,
   useScreenShare,
   useDailyEvent,
@@ -73,6 +74,7 @@ function Tile({
   isAlone,
   toggleMic,
   micOn,
+  isActiveSpeaker,
 }: {
   id: string;
   isScreenShare?: boolean;
@@ -80,30 +82,35 @@ function Tile({
   isAlone?: boolean;
   toggleMic?: () => void;
   micOn?: boolean;
+  isActiveSpeaker?: boolean;
 }) {
   const videoState = useVideoTrack(id);
 
   let containerCssClasses =
-    "rounded-lg overflow-hidden shadow-lg m-2 border-2 ";
-  containerCssClasses += isScreenShare ? "bg-blue-100" : "bg-gray-100";
+    "rounded-lg overflow-hidden shadow-lg m-2 border-2 transition-all duration-500 ";
+  containerCssClasses += isScreenShare ? "bg-blue-100 " : "bg-gray-100 ";
 
   if (isLocal) {
     containerCssClasses += " border-green-500 ";
     if (isAlone) {
-      containerCssClasses += " opacity-50";
+      containerCssClasses += " opacity-50 ";
     }
   } else {
     containerCssClasses += " border-gray-300 ";
   }
 
   if (videoState.isOff) {
-    containerCssClasses += " bg-gray-300";
+    containerCssClasses += " bg-gray-300 ";
+  }
+
+  if (isActiveSpeaker) {
+    containerCssClasses += " ring-4 ring-yellow-500 ring-opacity-50 ";
   }
 
   let micButtonClasses = "absolute bottom-4 right-4 px-2 py-1 ";
   micButtonClasses += micOn
-    ? "bg-green-500 text-white"
-    : "bg-red-500 text-white";
+    ? "bg-green-500 text-white "
+    : "bg-red-500 text-white ";
 
   return (
     <div className={containerCssClasses}>
@@ -113,7 +120,6 @@ function Tile({
           <Button
             variant={micOn ? "success" : "danger"}
             className={"text-xs ml-4"}
-            // className={micButtonClasses}
             onClick={toggleMic}
           >
             {micOn ? "unmute" : "mute"}
@@ -194,6 +200,7 @@ function Button({ variant, children, ...rest }: ButtonProps) {
 function Call({ toggleMic, micOn }: { toggleMic: () => void; micOn: boolean }) {
   const [getUserMediaError, setGetUserMediaError] = useState(false);
   const meetingState = useMeetingState();
+  const activeSpeakerId = useActiveSpeakerId();
 
   console.log("Meeting State: ", meetingState);
 
@@ -219,13 +226,19 @@ function Call({ toggleMic, micOn }: { toggleMic: () => void; micOn: boolean }) {
           isAlone={isAlone}
           toggleMic={toggleMic}
           micOn={micOn}
+          isActiveSpeaker={activeSpeakerId === localSessionId}
         />
       )}
       {remoteParticipantIds.map((id) => (
-        <Tile key={id} id={id} />
+        <Tile key={id} id={id} isActiveSpeaker={activeSpeakerId === id} />
       ))}
       {screens.map((screen) => (
-        <Tile key={screen.screenId} id={screen.session_id} isScreenShare />
+        <Tile
+          key={screen.screenId}
+          id={screen.session_id}
+          isScreenShare
+          isActiveSpeaker={activeSpeakerId === screen.session_id}
+        />
       ))}
       {isAlone && meetingState === "joined-meeting" && (
         <div className="text-center p-4 m-4 rounded-lg shadow-lg bg-yellow-100 flex flex-col items-center">
@@ -250,12 +263,13 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
     setMicOn(!micOn);
   };
 
-  const leaveCall = useCallback(() => {
-    callObject?.leave();
+  const leaveCall = useCallback(async () => {
+    await callObject?.leave();
     setJoinedRoom(false);
   }, [callObject]);
 
   const handleOrbClick = useCallback(async () => {
+    console.log("hi", joinedRoom);
     if (joinedRoom) {
       leaveCall();
     } else {
@@ -279,7 +293,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         console.error("Error creating room:", error);
       }
     }
-  }, [callObject, roomUrl, userName]);
+  }, [callObject, roomUrl, userName, joinedRoom]);
 
   return (
     <div className="flex flex-col items-center space-y-4 p-4">
@@ -317,7 +331,7 @@ export default function Home() {
     <DailyProvider callObject={callObject}>
       <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
         <h1 className="text-2xl font-bold text-center mb-4">
-          An AI podcast featuring you and an infinite cast of AI friends
+          An infinite podcast featuring you and a cast of AI friends
         </h1>
         <AudioCall callObject={callObject} />
       </main>

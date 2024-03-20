@@ -48,6 +48,9 @@ class CustomEventHandler(EventHandler):
     def _leave_callback(self, *args, **kwargs):
         self.left = True
 
+    def on_active_speaker_change(self, participant):
+        print("Active speaker change", participant)
+
     def on_participant_counts_updated(self, counts):
         print("Participant counts updated", counts)
         print(self.client.participants())
@@ -56,6 +59,16 @@ class CustomEventHandler(EventHandler):
         print("Participant left", participant, reason)
         print(self.client.participants())
         participants = self.client.participants()
-        if len(participants) == 1 and "local" in participants:
+        if (
+            len(
+                list(
+                    filter(
+                        lambda x: not x["info"]["userName"].endswith(" (AI)"),
+                        participants.values(),
+                    )
+                )
+            )
+            == 0
+        ):
             print("Last participant left, ending the call")
             self.client.leave(completion=self._leave_callback)
