@@ -248,7 +248,12 @@ class ResponseAgent:
             i = upper
 
     async def _generate_and_speak(
-        self, db: SessionAsync, t_whisper=None, new_message=None, system_prompt=None
+        self,
+        db: SessionAsync,
+        t_whisper=None,
+        new_message=None,
+        system_prompt=None,
+        chat_model=CHAT_MODEL_GPT4,
     ):
         if system_prompt is None:
             system_prompt = prompt(
@@ -281,7 +286,8 @@ class ResponseAgent:
             try:
                 response = await acompletion(
                     # CHAT_MODEL, messages, temperature=0.3, stream=True
-                    CHAT_MODEL_GPT4,
+                    CHAT_MODEL,
+                    # CHAT_MODEL_GPT4,
                     messages,
                     # temperature=0.3,
                     temperature=1.2,
@@ -339,6 +345,7 @@ class ResponseAgent:
                 db,
                 t_whisper,
                 {"role": "user", "content": transcription},
+                chat_model=CHAT_MODEL,
             )
 
     async def speak_response(
