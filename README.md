@@ -58,6 +58,8 @@ cd openduck-py
 streamlit run observability.py
 ```
 
+Alternative is to use [Dockerfile](Dockerfile.observability)
+
 ### Troubleshooting
 
 - The Simple Python client sometimes has strange audio playback bugs. You can try restarting your OS's audio services, e.g. `sudo pkill coreaudiod` on Mac OS.
