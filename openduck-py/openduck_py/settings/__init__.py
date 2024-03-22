@@ -13,6 +13,6 @@ CHAT_MODEL = "azure/gpt-35-turbo-deployment"
 CHAT_MODEL_GPT4 = "azure/gpt-4-deployment"
 
 # to not break existing env files
-os.environ["AZURE_API_KEY"] = os.getenv("AZURE_OPENAI_API_KEY")
-os.environ["AZURE_API_BASE"] = os.getenv("AZURE_OPENAI_ENDPOINT")
+os.environ["AZURE_API_KEY"] = os.environ.get("AZURE_OPENAI_API_KEY", "")
+os.environ["AZURE_API_BASE"] = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
 os.environ["AZURE_API_VERSION"] = "2023-05-15"
