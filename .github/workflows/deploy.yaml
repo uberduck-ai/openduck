@@ -155,11 +155,6 @@ jobs:
         with:
           cluster_name: ${{ env.environment }}-uberduck
           args: set image --namespace default --record deployment/openduck-api api=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.build-openduck.outputs.imageTag }}
-      - name: Update admin-openduck deployment
-        uses: ianbelcher/eks-kubectl-action@master
-        with:
-          cluster_name: ${{ env.environment }}-uberduck
-          args: set image --namespace default --record deployment/openduck-admin admin=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.build-openduck.outputs.imageTag }}
 
   build-observability:
     name: Build observability image
