@@ -9,20 +9,25 @@ from sqlalchemy import select
 import numpy as np
 import httpx
 
+from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.settings import (
     CHUNK_SIZE,
     WS_SAMPLE_RATE,
     CHAT_MODEL_GPT4,
+    CHAT_MODEL,
     LOG_TO_SLACK,
     ML_API_URL,
-    TTS_PROVIDER,
-    VOICE_ID,
 )
+from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.models import DBChatHistory
+from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.logging.db import log_event
-from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
+from openduck_py.utils.third_party_tts import (
+    aio_elevenlabs_tts,
+    ELEVENLABS_VIKRAM,
+    ELEVENLABS_CHRIS,
+)
 
 
 async def _normalize_text(text: str) -> str:
@@ -102,7 +107,6 @@ class WavAppender:
         self.params_set = False
 
     def open_file(self):
-        # TODO (Matthew): Delete this function?
         self.file = wave.open(
             self.wav_file_path,
             "wb" if not os.path.exists(self.wav_file_path) else "r+b",
@@ -128,7 +132,6 @@ class WavAppender:
             self.params_set = False
 
     def log(self):
-        # TODO (Matthew): Delete this function?
         if LOG_TO_SLACK:
             log_audio_to_slack(self.wav_file_path)
 
@@ -139,6 +142,7 @@ class ResponseAgent:
         session_id: str,
         input_audio_format: Literal["float32", "int32", "int16"] = "float32",
         record=False,
+        tts_config: Optional[TTSConfig] = None,
         system_prompt: str = "system-prompt",
         context: Optional[dict] = None,
     ):
@@ -157,6 +161,10 @@ class ResponseAgent:
         if context is None:
             context = {}
         self.context = context
+
+        if tts_config is None:
+            tts_config = TTSConfig()
+        self.tts_config = tts_config
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -328,7 +336,7 @@ class ResponseAgent:
             print("Echo detected, not sending response.")
             return
 
-        if TTS_PROVIDER == "local":
+        if self.tts_config.provider == "local":
             normalized = await _normalize_text(response_text)
             t_normalize = time()
             await log_event(
@@ -340,7 +348,7 @@ class ResponseAgent:
             )
 
             audio_bytes_iter = _inference(normalized)
-        elif TTS_PROVIDER == "elevenlabs":
+        elif self.tts_config.provider == "elevenlabs":
             t_normalize = time()
             await log_event(
                 db,
@@ -349,10 +357,9 @@ class ResponseAgent:
                 meta={"text": response_text},
                 latency=t_normalize - t_chat,
             )
-            audio_bytes_iter = aio_elevenlabs_tts(response_text, voice_id=VOICE_ID)
-        else:
-            # TODO (Matthew): Implement OpenAI voices?
-            raise ValueError("Invalid TTS_PROVIDER")
+            audio_bytes_iter = aio_elevenlabs_tts(
+                response_text, voice_id=self.tts_config.voice_id
+            )
 
         t_styletts = time()
 

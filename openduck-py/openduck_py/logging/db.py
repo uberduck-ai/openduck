@@ -9,12 +9,10 @@ import boto3
 
 from openduck_py.db import AsyncSession
 from openduck_py.models.chat_record import EventName, DBChatRecord
-from openduck_py.settings import (
-    WS_SAMPLE_RATE,
-    OUTPUT_SAMPLE_RATE,
-    AUDIO_UPLOAD_BUCKET,
-    LOG_TO_S3,
-)
+from openduck_py.settings import WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, AUDIO_UPLOAD_BUCKET
+
+
+LOG_TO_S3 = True
 
 
 async def log_event(

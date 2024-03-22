@@ -9,16 +9,19 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from daily import *
 
 from openduck_py.response_agent import ResponseAgent
+from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.settings import (
     CHAT_MODEL,
     OUTPUT_SAMPLE_RATE,
     WS_SAMPLE_RATE,
+)
+from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
+from openduck_py.utils.third_party_tts import (
     ELEVENLABS_VIKRAM,
     ELEVENLABS_CHRIS,
 )
-from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
 from openduck_py.logging.db import log_event
 
 with open("aec-cartoon-degraded.wav", "wb") as f:
@@ -228,6 +231,7 @@ async def connect_daily(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
+        tts_config=TTSConfig(provider="local", voice_id=voice_id),
         system_prompt=system_prompt,
         context=context,
     )
