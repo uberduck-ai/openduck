@@ -32,7 +32,6 @@ from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
 
 
 if ASR_METHOD == "deepgram":
-    print("Deepgram API Secret: ", DEEPGRAM_API_SECRET)
     deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
 
 
