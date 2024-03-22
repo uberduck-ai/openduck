@@ -10,10 +10,6 @@ def elevenlabs_tts():
     raise NotImplementedError("Elevenlabs TTS is not implemented yet")
 
 
-ELEVENLABS_VIKRAM = "gKhGpodmvg3JEngzD7eI"
-ELEVENLABS_CHRIS = "iP95p4xoKVk53GoZ742B"
-
-
 async def aio_elevenlabs_tts(
     text, voice_id="gKhGpodmvg3JEngzD7eI"
 ) -> AsyncGenerator[bytes, None]:
