@@ -23,6 +23,7 @@ app.add_middleware(
         "https://openduck.vercel.app",
         "https://openduck.ai",
         "https://b898bccd7757.ngrok.app",
+        "https://uberduck.ngrok.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],

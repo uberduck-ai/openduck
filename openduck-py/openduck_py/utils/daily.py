@@ -48,7 +48,6 @@ class CustomEventHandler(EventHandler):
 
     def _leave_callback(self, *args, **kwargs):
         self.left = True
-        sys.exit()
 
     def on_active_speaker_change(self, participant):
         print("Active speaker change", participant)

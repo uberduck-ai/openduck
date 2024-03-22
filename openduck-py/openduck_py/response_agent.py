@@ -21,8 +21,9 @@ from openduck_py.settings import (
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.models import DBChatHistory, DBChatRecord
+from openduck_py.models import DBChatHistory
 from openduck_py.logging.db import log_event
+from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.utils.third_party_tts import (
     aio_elevenlabs_tts,
     ELEVENLABS_VIKRAM,
@@ -156,6 +157,7 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task: Optional[asyncio.Task] = None
+        self.interrupt_event = asyncio.Event()
         self.system_prompt = system_prompt
 
         if context is None:
@@ -166,10 +168,17 @@ class ResponseAgent:
             tts_config = TTSConfig()
         self.tts_config = tts_config
 
-    def interrupt(self, task: asyncio.Task):
+    async def _clear_queue(self):
+        while not self.response_queue.empty():
+            await self.response_queue.get()
+
+    async def interrupt(self, task: asyncio.Task):
         assert self.is_responding
         print("interrupting!")
+        self.interrupt_event.set()
         task.cancel()
+        await self._clear_queue()
+        self.interrupt_event.clear()
         self.is_responding = False
 
     async def receive_audio(self, message: bytes):
@@ -220,7 +229,7 @@ class ResponseAgent:
                                 await log_event(
                                     db, self.session_id, "interrupted_response"
                                 )
-                                self.interrupt(self.response_task)
+                                await self.interrupt(self.response_task)
             i = upper
 
     async def _generate_and_speak(
@@ -295,33 +304,38 @@ class ResponseAgent:
         audio_data: np.ndarray,
     ):
         self.is_responding = True
-        async with SessionAsync() as db:
-            await log_event(db, self.session_id, "started_response", audio=audio_data)
-            t_0 = time()
+        try:
+            async with SessionAsync() as db:
+                await log_event(
+                    db, self.session_id, "started_response", audio=audio_data
+                )
+                t_0 = time()
 
-            transcription = await _transcribe(audio_data)
-            print("TRANSCRIPTION: ", transcription, flush=True)
-            t_whisper = time()
-            await log_event(
-                db,
-                self.session_id,
-                "transcribed_audio",
-                meta={"text": transcription},
-                latency=t_whisper - t_0,
-            )
-            if not transcription or len(audio_data) < 100:
-                return
+                transcription = await _transcribe(audio_data)
+                print("TRANSCRIPTION: ", transcription, flush=True)
+                t_whisper = time()
+                await log_event(
+                    db,
+                    self.session_id,
+                    "transcribed_audio",
+                    meta={"text": transcription},
+                    latency=t_whisper - t_0,
+                )
+                if not transcription or len(audio_data) < 100:
+                    return
 
-            system_prompt = {
-                "role": "system",
-                "content": prompt(f"most-interesting-bot/{self.system_prompt}.md"),
-            }
-            await self._generate_and_speak(
-                db,
-                t_whisper,
-                {"role": "user", "content": transcription},
-                chat_model=CHAT_MODEL_GPT4,
-            )
+                system_prompt = {
+                    "role": "system",
+                    "content": prompt(f"most-interesting-bot/{self.system_prompt}.md"),
+                }
+                await self._generate_and_speak(
+                    db,
+                    t_whisper,
+                    {"role": "user", "content": transcription},
+                    chat_model=CHAT_MODEL_GPT4,
+                )
+        finally:
+            self.is_responding = False
 
     async def speak_response(
         self,
@@ -370,6 +384,8 @@ class ResponseAgent:
 
         audio_chunk_bytes = bytes()
         async for chunk in audio_bytes_iter:
+            if self.interrupt_event.is_set():
+                break
             await self.response_queue.put(chunk)
             audio_chunk_bytes += chunk
         await log_event(

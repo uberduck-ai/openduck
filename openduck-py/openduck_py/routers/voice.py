@@ -20,7 +20,6 @@ import httpx
 
 from openduck_py.response_agent import ResponseAgent
 from openduck_py.configs.tts_config import TTSConfig
-from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
@@ -74,12 +73,23 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
     return reset_state
 
 
-async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
+async def daily_consumer(
+    queue: asyncio.Queue, interrupt: asyncio.Event, mic: VirtualMicrophoneDevice
+):
     while True:
+        if interrupt.is_set():
+            await asyncio.sleep(0.1)
+            continue
+
         chunk = await queue.get()  # Dequeue a chunk
+        print("queue size: ", queue.qsize())
         if chunk:
             mic.write_frames(chunk)
             queue.task_done()
+            # NOTE(zach): Avoid writ
+            chunk_time_seconds = len(chunk) / 2 / OUTPUT_SAMPLE_RATE
+            await asyncio.sleep(chunk_time_seconds / 4)
+            print("CHUNK TIME SECONDS: ", chunk_time_seconds)
 
 
 async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
@@ -260,12 +270,15 @@ async def connect_daily(
         system_prompt=system_prompt,
         context=base_context,
     )
-    asyncio.create_task(daily_consumer(responder.response_queue, mic))
+    asyncio.create_task(
+        daily_consumer(responder.response_queue, responder.interrupt_event, mic)
+    )
+    # NOTE(zach): this is the first greeting
     if speak_first:
         async with SessionAsync() as db:
             participants = client.participants()
             participant_names = [
-                p["info"]["userName"].split(" (AI)")[0]
+                p["info"].get("userName", "unknown").split(" (AI)")[0]
                 for p in participants.values()
                 if not p["info"]["isLocal"]
             ]
@@ -283,6 +296,7 @@ async def connect_daily(
                 ),
                 chat_model=CHAT_MODEL,
             )
+    # NOTE(zach): The main loop of receiving audio and sending it to the agent.
     while True:
         if _check_for_exceptions(responder.response_task):
             responder.audio_data = []
@@ -297,11 +311,15 @@ async def connect_daily(
             await responder.receive_audio(message)
         await asyncio.sleep(0.01)
 
-    responder.recorder.close_file()
-    responder.recorder.log()
-    await responder.response_queue.join()
-    async with SessionAsync() as db:
-        await log_event(db, session_id, "ended_session")
+    try:
+        print("closing and logging to slack")
+        responder.recorder.close_file()
+        responder.recorder.log()
+        async with SessionAsync() as db:
+            await log_event(db, session_id, "ended_session")
+    finally:
+        print("exiting the process")
+        os._exit(0)
 
 
 def run_connect_daily(
