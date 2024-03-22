@@ -270,6 +270,8 @@ jobs:
       - start-runner-openduck
       - build-openduck
       - deploy-openduck
+      - build-observability
+      - deploy-observability
     runs-on: ubuntu-latest
     if: |
       always() &&
