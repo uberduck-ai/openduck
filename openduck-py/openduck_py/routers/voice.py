@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
@@ -92,7 +92,10 @@ async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
 
 
 @audio_router.post("/start")
-async def create_room_and_start():
+async def create_room_and_start(request: Request):
+    request_data = await request.json()
+    context = request_data.get("context", {})
+
     room_info = await create_room()
     print("created room")
 
@@ -104,6 +107,7 @@ async def create_room_and_start():
             prompt="podcast_host",
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
+            context=context,
         ),
     )
     process.start()
@@ -206,6 +210,7 @@ async def connect_daily(
     system_prompt=None,
     voice_id=None,
     speak_first=False,
+    context: Optional[Dict[str, str]] = None,
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
@@ -242,16 +247,18 @@ async def connect_daily(
         },
     )
     my_name = username.split(" (AI)")[0]
-    context = {
+    base_context = {
         "my_name": my_name,
     }
+    if context is not None:
+        base_context.update(context)
     responder = ResponseAgent(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
         tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         system_prompt=system_prompt,
-        context=context,
+        context=base_context,
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
     if speak_first:
@@ -267,11 +274,12 @@ async def connect_daily(
                 t_whisper=time(),
                 new_message=None,
                 system_prompt=prompt(
-                    f"most-interesting-bot/intro-prompt",
-                    {
-                        "my_name": my_name,
-                        "participant_names": " and ".join(participant_names),
-                    },
+                    "intros/greeting.txt",
+                    dict(
+                        responder.context,
+                        my_name=my_name,
+                        participant_names=" and ".join(participant_names),
+                    ),
                 ),
                 chat_model=CHAT_MODEL,
             )
@@ -302,6 +310,7 @@ def run_connect_daily(
     prompt: str,
     voice_id: Optional[str] = None,
     speak_first=False,
+    context: Optional[Dict[str, str]] = None,
 ):
     asyncio.run(
         connect_daily(
@@ -310,6 +319,7 @@ def run_connect_daily(
             system_prompt=prompt,
             voice_id=voice_id,
             speak_first=speak_first,
+            context=context,
         )
     )
 

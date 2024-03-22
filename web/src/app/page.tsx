@@ -279,6 +279,15 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
           headers: {
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            context: {
+              local_time: new Date().toLocaleString(),
+              name: userName,
+              num_prev_conversations: 0,
+              is_public: false,
+              topics: [],
+            },
+          }),
         });
         const room = await response.json();
         if (room.url) {

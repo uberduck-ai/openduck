@@ -233,12 +233,13 @@ class ResponseAgent:
     ):
         if system_prompt is None:
             system_prompt = prompt(
-                f"most-interesting-bot/{self.system_prompt}", self.context
+                f"most-interesting-bot/{self.system_prompt}.md", self.context
             )
         system_prompt = {
             "role": "system",
             "content": system_prompt,
         }
+        print("system_prompt: ", system_prompt, flush=True)
 
         chat = (
             await db.execute(
@@ -313,7 +314,7 @@ class ResponseAgent:
 
             system_prompt = {
                 "role": "system",
-                "content": prompt(f"most-interesting-bot/{self.system_prompt}"),
+                "content": prompt(f"most-interesting-bot/{self.system_prompt}.md"),
             }
             await self._generate_and_speak(
                 db,

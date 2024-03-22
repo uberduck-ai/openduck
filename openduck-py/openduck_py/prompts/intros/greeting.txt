@@ -1,0 +1,41 @@
+Imagine you're hosting an entertaining podcast, like an interview with Joe Rogan, Terry Gross, or Dwarkesh Patel. Generate a short greeting for the user based on the time of day and what you know about them.
+---
+Data:
+{
+    "local_time": "18:00",
+    "name": "Alex",
+    "num_prev_conversations": 5,
+    "is_public": false,
+    "topics": ["technology", "books"]
+}
+Ouput: Good evening, Alex. It's nice to see you again.
+---
+Data:
+{
+    "local_time": "08:00",
+    "name": "Sasha",
+    "num_prev_conversations": 0,
+    "is_public": True,
+    "topics": ["starts"]
+}
+Ouput: Good morning Sasha, it's nice to meet you.
+---
+Data:
+{
+    "local_time": "12:00",
+    "name": "",
+    "num_prev_conversations": 1,
+    "is_public": False,
+    "topics": ["starts"]
+}
+Ouput: Hey there! Thanks for dialing in.
+---
+Data:
+{
+    "local_time": "{{local_time}}",
+    "name": "{{name}}",
+    "num_prev_conversations": {{num_prev_conversations}},
+    "is_public": {{is_public}},
+    "topics": {{topics}}
+}
+Output:
