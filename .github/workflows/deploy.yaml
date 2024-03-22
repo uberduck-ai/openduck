@@ -154,12 +154,120 @@ jobs:
         uses: ianbelcher/eks-kubectl-action@master
         with:
           cluster_name: ${{ env.environment }}-uberduck
-          args: set image --namespace default --record deployment/api-openduck api=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.build-openduck.outputs.imageTag }}
+          args: set image --namespace default --record deployment/openduck-api api=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.build-openduck.outputs.imageTag }}
       - name: Update admin-openduck deployment
         uses: ianbelcher/eks-kubectl-action@master
         with:
           cluster_name: ${{ env.environment }}-uberduck
-          args: set image --namespace default --record deployment/admin-openduck admin=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.build-openduck.outputs.imageTag }}
+          args: set image --namespace default --record deployment/openduck-admin admin=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck:${{ needs.build-openduck.outputs.imageTag }}
+
+  build-observability:
+    name: Build observability image
+    runs-on: ${{ needs.start-runner-openduck.outputs.label }}
+    needs: start-runner-openduck
+    if: |
+      (
+        github.event_name == 'pull_request' ||
+        github.event_name == 'pull_request_target'
+      ) &&
+      (
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true
+      )
+    environment:
+      name: ${{ github.event.pull_request.base.ref }}
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      environment: ${{ github.event.pull_request.base.ref }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setting Up Directory Structures as ENV Vars
+        id: tagImage
+        run: |
+          echo "imageTag=${GITHUB_REF##*/}-$(git rev-parse --short=7 HEAD)-$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Build, Tag & Push ${{ env.environment }}-openduck-streamlit image to ECR
+        uses: docker/build-push-action@v5
+        env:
+          ecrRegistry: ${{ steps.login-ecr.outputs.registry }}
+          imageTag: ${{ steps.tagImage.outputs.imageTag }}
+        with:
+          context: .
+          file: Dockerfile.observability
+          push: true
+          tags: |
+            ${{ env.ecrRegistry }}/${{ env.environment }}-openduck-streamlit:${{ env.imageTag }}
+            ${{ env.ecrRegistry }}/${{ env.environment }}-openduck-streamlit:latest
+          # Experimental https://docs.docker.com/build/ci/github-actions/cache/#github-cache
+          cache-from: type=registry,ref=${{ env.ecrRegistry }}/${{ env.environment }}-openduck-streamlit:latest
+          cache-to: type=inline
+    outputs:
+      dockerRegistry: ${{ steps.login-ecr.outputs.registry }}
+      imageTag: ${{ steps.tagImage.outputs.imageTag }}
+
+  deploy-observability:
+    name: Deploy observability app
+    runs-on: ${{ needs.start-runner-openduck.outputs.label }}
+    needs: 
+      - start-runner-openduck
+      - build-observability
+    if: |
+      contains(join(needs.*.result, ','), 'success') &&
+      (
+        github.event_name == 'pull_request' ||
+        github.event_name == 'pull_request_target'
+      ) &&
+      (
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true
+      )
+    environment:
+      name: ${{ github.event.pull_request.base.ref }}
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      environment: ${{ github.event.pull_request.base.ref }}
+      aws_region: ${{ vars.AWS_REGION }}
+    steps:
+      - name: AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_GITHUB_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_GITHUB_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.aws_region }}
+      - name: Update openduck-streamlit deployment
+        uses: ianbelcher/eks-kubectl-action@master
+        with:
+          cluster_name: ${{ env.environment }}-uberduck
+          args: set image --namespace default --record deployment/openduck-streamlit streamlit=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck-streamlit:${{ needs.build-openduck.outputs.imageTag }}
 
   stop-runner-openduck:
     name: Terminate openduck runner
