@@ -14,20 +14,15 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     WS_SAMPLE_RATE,
     CHAT_MODEL_GPT4,
-    CHAT_MODEL,
     LOG_TO_SLACK,
     ML_API_URL,
 )
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.models import DBChatHistory, DBChatRecord
+from openduck_py.models import DBChatHistory
 from openduck_py.logging.db import log_event
-from openduck_py.utils.third_party_tts import (
-    aio_elevenlabs_tts,
-    ELEVENLABS_VIKRAM,
-    ELEVENLABS_CHRIS,
-)
+from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
 
 
 async def _normalize_text(text: str) -> str:
