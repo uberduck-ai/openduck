@@ -8,6 +8,7 @@ fastapi
 Flask 
 Flask-Admin 
 Flask-SQLAlchemy
+Jinja2
 librosa
 litellm
 munch
@@ -17,8 +18,6 @@ numpy
 openai
 openai-whisper
 phonemizer
-pyannote.core
-pyannote.audio
 pylru
 pytest
 pytest-mock

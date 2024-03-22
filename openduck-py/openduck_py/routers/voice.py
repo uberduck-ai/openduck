@@ -1,56 +1,44 @@
 import asyncio
 import os
 import re
+import multiprocessing
 from time import time
-from typing import Optional, Dict, Literal
+from typing import Optional, Dict, Literal, AsyncGenerator
 import wave
 import requests
 from pathlib import Path
 from uuid import uuid4
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 import numpy as np
 from scipy.io import wavfile
 from sqlalchemy import select
-import torch
-import torchaudio
-from whisper import load_model
 from daily import *
+from litellm import acompletion
+import httpx
 
+from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.models import DBChatHistory, DBChatRecord
 from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
-from openduck_py.voices.styletts2 import styletts2_inference, STYLETTS2_SAMPLE_RATE
 from openduck_py.settings import (
-    IS_DEV,
-    WS_SAMPLE_RATE,
-    OUTPUT_SAMPLE_RATE,
+    CHAT_MODEL,
+    CHAT_MODEL_GPT4,
     CHUNK_SIZE,
     LOG_TO_SLACK,
-    CHAT_MODEL,
-    UTILITY_MODEL,
+    ML_API_URL,
+    OUTPUT_SAMPLE_RATE,
+    WS_SAMPLE_RATE,
 )
-from openduck_py.routers.templates import generate, chat_continuation
-from openduck_py.utils.speaker_identification import (
-    segment_audio,
-    load_pipelines,
+from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
+from openduck_py.utils.third_party_tts import (
+    aio_elevenlabs_tts,
+    ELEVENLABS_VIKRAM,
+    ELEVENLABS_CHRIS,
 )
 from openduck_py.logging.slack import log_audio_to_slack
-
-if IS_DEV:
-    normalize_text = lambda x: x
-else:
-    from nemo_text_processing.text_normalization.normalize import Normalizer
-
-    normalizer = Normalizer(input_case="cased", lang="en")
-    normalize_text = normalizer.normalize
-
-
-try:
-    pipeline, inference = load_pipelines()
-except OSError:
-    pipeline, inference = load_pipelines()
 
 with open("aec-cartoon-degraded.wav", "wb") as f:
     f.write(
@@ -59,14 +47,48 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
         ).content
     )
 
-speaker_embedding = inference("aec-cartoon-degraded.wav")
-whisper_model = load_model("base.en")
-
 audio_router = APIRouter(prefix="/audio")
 
+Daily.init()
 
-def _transcribe(audio_data):
-    return whisper_model.transcribe(audio_data)["text"]
+processes = {}
+
+
+async def _transcribe(audio_data: np.ndarray) -> str:
+    assert audio_data.dtype == np.float32
+    wav_io = BytesIO(audio_data.tobytes())
+    wav_data = wav_io.getvalue()
+
+    # Send the POST request to the endpoint
+    url = f"{ML_API_URL}/ml/transcribe"
+    files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, files=files)
+
+    if response.status_code == 200:
+        return response.json()["text"]
+    else:
+        raise Exception(f"Transcription failed with status code {response.status_code}")
+
+
+async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
+    url = f"{ML_API_URL}/ml/tts"
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json={"text": sentence})
+
+        async for chunk in response.aiter_bytes(CHUNK_SIZE):
+            yield chunk
+
+
+async def _normalize_text(text: str) -> str:
+    url = f"{ML_API_URL}/ml/normalize"
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json={"text": text})
+
+    if response.status_code == 200:
+        return response.json()["text"]
+    else:
+        raise Exception(f"Normalization failed with status code {response.status_code}")
 
 
 class WavAppender:
@@ -115,6 +137,11 @@ class SileroVad:
             self.vad_iterator.reset_states()
 
     def __call__(self, audio_data):
+        # Lazy import torch so that it doesn't slow down creating a new Daily room for the user
+        import torch
+
+        if not isinstance(audio_data, torch.Tensor):
+            audio_data = torch.tensor(audio_data)
         if self.model is None:
             model, utils = torch.hub.load(
                 repo_or_dir="snakers4/silero-vad", model="silero_vad"
@@ -139,6 +166,9 @@ class ResponseAgent:
         session_id: str,
         input_audio_format: Literal["float32", "int32", "int16"] = "float32",
         record=False,
+        tts_config: TTSConfig = None,
+        system_prompt: str = "system-prompt",
+        context: Optional[dict] = None,
     ):
         self.session_id = session_id
         self.response_queue = asyncio.Queue()
@@ -150,6 +180,15 @@ class ResponseAgent:
         self.record = record
         self.time_of_last_activity = time()
         self.response_task = None
+        self.system_prompt = system_prompt
+
+        if context is None:
+            context = {}
+        self.context = context
+
+        if tts_config is None:
+            tts_config = TTSConfig()
+        self.tts_config = tts_config
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -158,6 +197,8 @@ class ResponseAgent:
         self.is_responding = False
 
     async def receive_audio(self, message: np.ndarray):
+        # Convert the input audio from input_audio_format to float32
+        # Silero VAD and Whisper require float32
         if self.input_audio_format == "float32":
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
         elif self.input_audio_format == "int32":
@@ -169,17 +210,15 @@ class ResponseAgent:
             audio_16k_np = audio_16k_np.astype(np.float32) / np.iinfo(np.int16).max
             audio_16k_np = audio_16k_np.astype(np.float32)
 
-        audio_16k: torch.Tensor = torch.tensor(audio_16k_np)
-
         self.audio_data.append(audio_16k_np)
         if self.record:
             self.recorder.append(audio_16k_np)
         i = 0
-        while i < len(audio_16k):
+        while i < len(audio_16k_np):
             upper = i + self.vad.window_size
-            if len(audio_16k) - self.vad.window_size < upper:
-                upper = len(audio_16k)
-            audio_16k_chunk = audio_16k[i:upper]
+            if len(audio_16k_np) - self.vad.window_size < upper:
+                upper = len(audio_16k_np)
+            audio_16k_chunk = audio_16k_np[i:upper]
             vad_result = self.vad(audio_16k_chunk)
             if vad_result:
                 # TODO (Matthew): Can we send telemetry via an API instead of saving to a database?
@@ -208,6 +247,74 @@ class ResponseAgent:
                                 self.interrupt(self.response_task)
             i = upper
 
+    async def _generate_and_speak(
+        self,
+        db: SessionAsync,
+        t_whisper=None,
+        new_message=None,
+        system_prompt=None,
+        chat_model=CHAT_MODEL_GPT4,
+    ):
+        if system_prompt is None:
+            system_prompt = prompt(
+                f"most-interesting-bot/{self.system_prompt}", self.context
+            )
+        system_prompt = {
+            "role": "system",
+            "content": system_prompt,
+        }
+        # new_message = {"role": "user", "content": transcription}
+
+        chat = (
+            await db.execute(
+                select(DBChatHistory).where(DBChatHistory.session_id == self.session_id)
+            )
+        ).scalar_one_or_none()
+        if chat is None:
+            chat = DBChatHistory(
+                session_id=self.session_id,
+                history_json={"messages": [system_prompt]},
+            )
+            db.add(chat)
+        messages = chat.history_json["messages"]
+        if new_message is not None:
+            messages.append(new_message)
+
+        # NOTE(zach): retries
+        response = None
+        for _retry in range(3):
+            try:
+                response = await acompletion(
+                    # CHAT_MODEL, messages, temperature=0.3, stream=True
+                    CHAT_MODEL,
+                    # CHAT_MODEL_GPT4,
+                    messages,
+                    # temperature=0.3,
+                    temperature=1.2,
+                    stream=True,
+                )
+            except Exception:
+                if _retry == 2:
+                    raise
+            else:
+                break
+        complete_sentence = ""
+        full_response = ""
+        async for chunk in response:
+            chunk_text = chunk.choices[0].delta.content
+            if not chunk_text:
+                break
+            complete_sentence += chunk_text
+            full_response += chunk_text
+            # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
+            if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
+                await self.speak_response(complete_sentence, db, t_whisper)
+                complete_sentence = ""
+
+        messages.append({"role": "assistant", "content": full_response})
+        chat.history_json["messages"] = messages
+        await db.commit()
+
     async def start_response(
         self,
         audio_data: np.ndarray,
@@ -215,117 +322,88 @@ class ResponseAgent:
         self.is_responding = True
         async with SessionAsync() as db:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
-            t0 = time()
+            t_0 = time()
 
-            def _inference(sentence: str):
-                audio_chunk = styletts2_inference(
-                    text=sentence,
-                    output_sample_rate=OUTPUT_SAMPLE_RATE,
-                )
-                audio_chunk = np.int16(audio_chunk * 32767).tobytes()
-                return audio_chunk
-
-            # Remove echo
-            audio_data = await asyncio.to_thread(
-                segment_audio,
-                audio_data,
-                WS_SAMPLE_RATE,
-                speaker_embedding,
-                pipeline,
-                inference,
-            )
-            await log_event(db, self.session_id, "removed_echo", audio=audio_data)
-
-            # TODO: timestamp for echo removal
-
-            transcription = await asyncio.to_thread(_transcribe, audio_data)
-            print("TRANSCRIPTION: ", transcription)
+            transcription = await _transcribe(audio_data)
+            print("TRANSCRIPTION: ", transcription, flush=True)
             t_whisper = time()
             await log_event(
-                db, self.session_id, "transcribed_audio", meta={"text": transcription}
+                db,
+                self.session_id,
+                "transcribed_audio",
+                meta={"text": transcription},
+                latency=t_whisper - t_0,
             )
-            classify_prompt = prompt("intent-classification")
-            classification_response = await generate(
-                template=classify_prompt,
-                variables={"transcription": transcription},
-                model=UTILITY_MODEL,
-                role="user",
-            )
-            classification_response_message = classification_response.choices[
-                0
-            ].message.content
-            if classification_response_message == "stop":
-                await self.response_queue.put(None)  # Signal to stop the conversation
-                return
             if not transcription or len(audio_data) < 100:
                 return
 
             system_prompt = {
                 "role": "system",
-                "content": prompt("system-prompt"),
+                "content": prompt(f"most-interesting-bot/{self.system_prompt}"),
             }
-            new_message = {"role": "user", "content": transcription}
-
-            chat = (
-                await db.execute(
-                    select(DBChatHistory).where(
-                        DBChatHistory.session_id == self.session_id
-                    )
-                )
-            ).scalar_one_or_none()
-            if chat is None:
-                chat = DBChatHistory(
-                    session_id=self.session_id,
-                    history_json={"messages": [system_prompt]},
-                )
-                db.add(chat)
-            messages = chat.history_json["messages"]
-            messages.append(new_message)
-
-            response = await chat_continuation(messages)
-            response_message = response.choices[0].message
-            completion = response_message.content
-            await log_event(
-                db, self.session_id, "generated_completion", meta={"text": completion}
-            )
-            t_chat = time()
-            print(
-                f"Used {response.usage.prompt_tokens} prompt tokens and {response.usage.completion_tokens} completion tokens"
+            await self._generate_and_speak(
+                db,
+                t_whisper,
+                {"role": "user", "content": transcription},
+                chat_model=CHAT_MODEL,
             )
 
-            if "$ECHO" in completion:
-                print("Echo detected, not sending response.")
-                return
+    async def speak_response(
+        self,
+        response_text: str,
+        db: AsyncSession,
+        start_time: float,
+    ):
+        t_chat = time()
+        await log_event(
+            db,
+            self.session_id,
+            "generated_completion",
+            meta={"text": response_text},
+            latency=t_chat - start_time,
+        )
+        if "$ECHO" in response_text:
+            print("Echo detected, not sending response.")
+            return
 
-            messages.append({"role": response_message.role, "content": completion})
-            chat.history_json["messages"] = messages
-            await db.commit()
-
-            normalized = normalize_text(response_message.content)
-            await log_event(
-                db, self.session_id, "normalized_text", meta={"text": normalized}
-            )
+        if self.tts_config.provider == "local":
+            normalized = await _normalize_text(response_text)
             t_normalize = time()
-            sentences = re.split(r"(?<=[.!?]) +", normalized)
-            for sentence in sentences:
-                audio_chunk_bytes = await asyncio.to_thread(_inference, sentence)
-                await log_event(
-                    db,
-                    self.session_id,
-                    "generated_tts",
-                    audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
-                )
+            await log_event(
+                db,
+                self.session_id,
+                "normalized_text",
+                meta={"text": normalized},
+                latency=t_normalize - t_chat,
+            )
 
-                for i in range(0, len(audio_chunk_bytes), CHUNK_SIZE):
-                    chunk = audio_chunk_bytes[i : i + CHUNK_SIZE]
-                    await self.response_queue.put(chunk)
+            audio_bytes_iter = _inference(normalized)
+        elif self.tts_config.provider == "elevenlabs":
+            t_normalize = time()
+            await log_event(
+                db,
+                self.session_id,
+                "normalized_text",
+                meta={"text": response_text},
+                latency=t_normalize - t_chat,
+            )
+            audio_bytes_iter = aio_elevenlabs_tts(
+                response_text, voice_id=self.tts_config.voice_id
+            )
 
-            t_styletts = time()
+        t_styletts = time()
 
-            print("Whisper", t_whisper - t0)
-            print(CHAT_MODEL, t_chat - t_whisper)
-            print("Normalizer", t_normalize - t_chat)
-            print("StyleTTS2 + sending bytes", t_styletts - t_normalize)
+        audio_chunk_bytes = bytes()
+        async for chunk in audio_bytes_iter:
+            await self.response_queue.put(chunk)
+            audio_chunk_bytes += chunk
+        await log_event(
+            db,
+            self.session_id,
+            "generated_tts",
+            audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
+            latency=t_styletts - t_normalize,
+        )
 
 
 def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
@@ -352,6 +430,7 @@ async def log_event(
     event: EventName,
     meta: Optional[Dict[str, str]] = None,
     audio: Optional[np.ndarray] = None,
+    latency: Optional[float] = None,
 ):
     if audio is not None:
         log_path = f"logs/{session_id}/{event}_{time()}.wav"
@@ -362,12 +441,14 @@ async def log_event(
 
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
-            sample_rate = STYLETTS2_SAMPLE_RATE
+            sample_rate = OUTPUT_SAMPLE_RATE
         wavfile.write(abs_path, sample_rate, audio)
         print(f"Wrote wavfile to {abs_path}")
 
         meta = {"audio_url": log_path}
-    record = DBChatRecord(session_id=session_id, event_name=event, meta_json=meta)
+    record = DBChatRecord(
+        session_id=session_id, event_name=event, meta_json=meta, latency_seconds=latency
+    )
     db.add(record)
     await db.commit()
 
@@ -380,13 +461,54 @@ async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
             queue.task_done()
 
 
-async def consumer(queue: asyncio.Queue, websocket: WebSocket):
+async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
     """Dequeue audio chunks and send them through the websocket."""
     while True:
         chunk = await queue.get()  # Dequeue a chunk
         if chunk:
             await websocket.send_bytes(chunk)  # Send the chunk through the websocket
             queue.task_done()
+
+
+@audio_router.post("/start")
+async def create_room_and_start():
+    room_info = await create_room()
+    print("created room")
+
+    # Podcast host
+    process = multiprocessing.Process(
+        target=run_connect_daily,
+        kwargs=dict(
+            room_url=room_info["url"],
+            username="Vikram (AI)",
+            prompt="podcast_host",
+            voice_id=ELEVENLABS_VIKRAM,
+            speak_first=True,
+        ),
+    )
+    process.start()
+    print("started process: ", process.pid)
+    processes[process.pid] = process
+
+    # Podcast guest
+    process = multiprocessing.Process(
+        target=run_connect_daily,
+        kwargs=dict(
+            room_url=room_info["url"],
+            username="Chris (AI)",
+            prompt="podcast_guest",
+            voice_id=ELEVENLABS_CHRIS,
+        ),
+    )
+    process.start()
+    print("started process: ", process.pid)
+    processes[process.pid] = process
+
+    return RoomCreateResponse(
+        url=room_info["url"],
+        name=room_info["name"],
+        privacy=room_info["privacy"],
+    )
 
 
 @audio_router.websocket("/response")
@@ -398,8 +520,11 @@ async def audio_response(
 ):
     await websocket.accept()
 
-    responder = ResponseAgent(session_id=session_id, record=record)
-    asyncio.create_task(consumer(responder.response_queue, websocket))
+    responder = ResponseAgent(
+        session_id=session_id,
+        record=record,
+    )
+    asyncio.create_task(websocket_consumer(responder.response_queue, websocket))
 
     try:
         while True:
@@ -427,10 +552,14 @@ async def audio_response(
     await log_event(db, session_id, "ended_session")
 
 
-async def connect_daily():
+async def connect_daily(
+    room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+    username: str = "host (AI)",
+    system_prompt=None,
+    voice_id=None,
+    speak_first=False,
+):
     session_id = str(uuid4())
-
-    Daily.init()
     mic = Daily.create_microphone_device(
         "my-mic", sample_rate=OUTPUT_SAMPLE_RATE, channels=1, non_blocking=True
     )
@@ -438,12 +567,18 @@ async def connect_daily():
         "my-speaker", sample_rate=WS_SAMPLE_RATE, channels=1
     )
     Daily.select_speaker_device("my-speaker")
-    client = CallClient()
+
+    event_handler = CustomEventHandler()
+    client = event_handler.client
+
+    assert username.endswith(" (AI)"), "Username must end with ' (AI)'"
+    client.set_user_name(username)
     client.update_subscription_profiles(
         {"base": {"camera": "unsubscribed", "microphone": "subscribed"}}
     )
+    print("PARTICIPANTS: ", client.participants())
     client.join(
-        meeting_url="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
+        meeting_url=room,
         client_settings={
             "inputs": {
                 "camera": False,
@@ -458,15 +593,47 @@ async def connect_daily():
             }
         },
     )
+    my_name = username.split(" (AI)")[0]
+    context = {
+        "my_name": my_name,
+    }
     responder = ResponseAgent(
-        session_id=session_id, record=False, input_audio_format="int16"
+        session_id=session_id,
+        record=False,
+        input_audio_format="int16",
+        tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
+        system_prompt=system_prompt,
+        context=context,
     )
     asyncio.create_task(daily_consumer(responder.response_queue, mic))
+    if speak_first:
+        async with SessionAsync() as db:
+            participants = client.participants()
+            participant_names = [
+                p["info"]["userName"].split(" (AI)")[0]
+                for p in participants.values()
+                if not p["info"]["isLocal"]
+            ]
+            await responder._generate_and_speak(
+                db,
+                t_whisper=time(),
+                new_message=None,
+                system_prompt=prompt(
+                    f"most-interesting-bot/intro-prompt",
+                    {
+                        "my_name": my_name,
+                        "participant_names": " and ".join(participant_names),
+                    },
+                ),
+            )
     while True:
         if _check_for_exceptions(responder.response_task):
             responder.audio_data = []
             responder.response_task = None
             responder.time_of_last_activity = time()
+        if event_handler.left:
+            print("left the call")
+            break
 
         message = speaker.read_frames(WS_SAMPLE_RATE // 10)
         if len(message) > 0:
@@ -476,7 +643,26 @@ async def connect_daily():
     responder.recorder.close_file()
     responder.recorder.log()
     await responder.response_queue.join()
-    await log_event(db, session_id, "ended_session")
+    async with SessionAsync() as db:
+        await log_event(db, session_id, "ended_session")
+
+
+def run_connect_daily(
+    room_url: str,
+    username: str,
+    prompt: str,
+    voice_id: Optional[str] = None,
+    speak_first=False,
+):
+    asyncio.run(
+        connect_daily(
+            room=room_url,
+            username=username,
+            system_prompt=prompt,
+            voice_id=voice_id,
+            speak_first=speak_first,
+        )
+    )
 
 
 if __name__ == "__main__":
