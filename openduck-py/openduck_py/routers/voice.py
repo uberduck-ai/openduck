@@ -109,6 +109,7 @@ async def create_room_and_start():
     process.start()
     print("started process: ", process.pid)
     processes[process.pid] = process
+    print("number of running processes: ", len(processes))
 
     return RoomCreateResponse(
         url=room_info["url"],

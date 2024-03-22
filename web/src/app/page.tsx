@@ -297,22 +297,23 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
 
   return (
     <div className="flex flex-col items-center space-y-4 p-4">
-      <input
+      {/*<input
         type="text"
         placeholder="Your Name"
         value={userName}
         onChange={(e) => setUserName(e.target.value)}
         className="text-center p-2 rounded-lg border-2 border-gray-300 mb-4"
         disabled={joinedRoom}
-      />
+      />*/}
       <button
-        className={`orb-button min-w-32 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform transition-transform duration-300 ease-in-out ${
-          !userName && "opacity-50 cursor-not-allowed"
+        className={`orb-button w-48 h-48 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${
+          ""
+          // !userName && "opacity-50 cursor-not-allowed"
         }`}
         onClick={handleOrbClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
-        disabled={!userName}
+        // disabled={!userName}
       >
         {joinedRoom ? "Leave Room" : "Start"}
       </button>
@@ -329,11 +330,13 @@ export default function Home() {
   const callObject = useCallObject({});
   return (
     <DailyProvider callObject={callObject}>
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
-        <h1 className="text-2xl font-bold text-center mb-4">
-          An infinite podcast featuring you and a cast of AI friends
+      <main className="min-h-screen bg-gray-50 flex flex-col items-center">
+        <h1 className="text-2xl font-bold text-center mt-8 mb-4 mx-4">
+          Voice chat with AI and humans.
         </h1>
-        <AudioCall callObject={callObject} />
+        <div className="flex-grow flex items-start">
+          <AudioCall callObject={callObject} />
+        </div>
       </main>
     </DailyProvider>
   );
