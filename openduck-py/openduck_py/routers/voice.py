@@ -186,7 +186,7 @@ async def audio_response(
 async def connect_daily(
     room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
     username: str = "host (AI)",
-    system_prompt=None,
+    system_prompt="system-prompt",
     voice_id=None,
     speak_first=False,
 ):
@@ -232,7 +232,7 @@ async def connect_daily(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
-        tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
+        tts_config=TTSConfig(provider="local", voice_id=voice_id),
         system_prompt=system_prompt,
         context=context,
     )
