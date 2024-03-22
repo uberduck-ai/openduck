@@ -172,7 +172,7 @@ class ResponseAgent:
         task.cancel()
         self.is_responding = False
 
-    async def receive_audio(self, message: np.ndarray):
+    async def receive_audio(self, message: bytes):
         # Convert the input audio from input_audio_format to float32
         # Silero VAD and Whisper require float32
         if self.input_audio_format == "float32":
