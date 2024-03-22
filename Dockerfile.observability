@@ -1,0 +1,66 @@
+FROM python:3.8-slim
+
+RUN groupadd --gid 1000 openduck \
+    && useradd --uid 1000 --gid 1000 -ms /bin/bash openduck
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    software-properties-common \
+    git
+
+RUN pip3 install --no-cache-dir --upgrade \
+    pip \
+    virtualenv
+
+USER openduck
+WORKDIR /home/openduck
+
+COPY ./openduck-py/ /home/openduck/streamlit
+
+USER root
+
+RUN cat <<EOF > /home/openduck/streamlit/observability.txt
+streamlit
+pandas
+sqlalchemy
+aiosqlite
+alembic
+EOF
+
+RUN cat <<EOF > /home/openduck/run.sh
+#!/bin/bash
+
+APP_PID=
+stopRunningProcess() {
+    if test ! "\${APP_PID}" = '' && ps -p \${APP_PID} > /dev/null ; then
+       echo "Stopping \${COMMAND_PATH} which is running with process ID \${APP_PID}"
+       kill -TERM \${APP_PID}
+       echo "Waiting for \${COMMAND_PATH} to process SIGTERM signal"
+       wait \${APP_PID}
+       echo "All processes have stopped running"
+    else
+        echo "\${COMMAND_PATH} was not started when the signal was sent or it has already been stopped"
+    fi
+}
+trap stopRunningProcess EXIT TERM
+source \${VIRTUAL_ENV}/bin/activate
+
+cd \${HOME}/streamlit/
+alembic upgrade head
+
+streamlit run \${HOME}/streamlit/observability.py &
+APP_PID=\${!}
+
+wait \${APP_PID}
+EOF
+
+RUN chmod +x /home/openduck/run.sh
+
+USER openduck
+
+ENV VIRTUAL_ENV=/home/openduck/venv
+RUN virtualenv ${VIRTUAL_ENV}
+RUN . ${VIRTUAL_ENV}/bin/activate && pip install -r streamlit/observability.txt
+
+EXPOSE 8501
+ENTRYPOINT ["/home/openduck/run.sh"]
