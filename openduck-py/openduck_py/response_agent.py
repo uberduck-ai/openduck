@@ -311,10 +311,6 @@ class ResponseAgent:
             if not transcription or len(audio_data) < 100:
                 return
 
-            system_prompt = {
-                "role": "system",
-                "content": prompt(f"most-interesting-bot/{self.system_prompt}"),
-            }
             await self._generate_and_speak(
                 db,
                 t_whisper,

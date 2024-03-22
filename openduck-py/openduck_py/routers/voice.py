@@ -1,45 +1,27 @@
 import asyncio
-import os
-import re
 import multiprocessing
 from time import time
-from typing import Optional, Dict, Literal, AsyncGenerator
-import wave
+from typing import Optional
 import requests
-from pathlib import Path
 from uuid import uuid4
-from io import BytesIO
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-import numpy as np
-from scipy.io import wavfile
-from sqlalchemy import select
 from daily import *
-from litellm import acompletion
-import httpx
 
 from openduck_py.response_agent import ResponseAgent
 from openduck_py.configs.tts_config import TTSConfig
-from openduck_py.models import DBChatHistory, DBChatRecord
-from openduck_py.models.chat_record import EventName
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.settings import (
     CHAT_MODEL,
-    CHAT_MODEL_GPT4,
-    CHUNK_SIZE,
-    LOG_TO_SLACK,
-    ML_API_URL,
     OUTPUT_SAMPLE_RATE,
     WS_SAMPLE_RATE,
 )
 from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
 from openduck_py.utils.third_party_tts import (
-    aio_elevenlabs_tts,
     ELEVENLABS_VIKRAM,
     ELEVENLABS_CHRIS,
 )
-from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.logging.db import log_event
 
 with open("aec-cartoon-degraded.wav", "wb") as f:
@@ -203,7 +185,7 @@ async def audio_response(
 async def connect_daily(
     room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
     username: str = "host (AI)",
-    system_prompt=None,
+    system_prompt="system-prompt",
     voice_id=None,
     speak_first=False,
 ):
@@ -249,7 +231,7 @@ async def connect_daily(
         session_id=session_id,
         record=False,
         input_audio_format="int16",
-        tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
+        tts_config=TTSConfig(provider="local", voice_id=voice_id),
         system_prompt=system_prompt,
         context=context,
     )
