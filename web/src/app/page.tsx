@@ -284,10 +284,16 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         if (room.url) {
           console.log("Room created and joining:", room.url);
           setRoomUrl(room.url);
-          callObject?.join({ url: room.url, userName: userName });
+          try {
+            await callObject?.join({ url: room.url, userName: userName });
+          } catch (error) {
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // Sleep for 1 second
+            await callObject?.join({ url: room.url, userName: userName });
+          }
           setJoinedRoom(true);
         } else {
           console.error("Failed to create room");
+          alert("couldn't join room");
         }
       } catch (error) {
         console.error("Error creating room:", error);

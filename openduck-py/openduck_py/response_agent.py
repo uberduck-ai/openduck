@@ -239,7 +239,6 @@ class ResponseAgent:
             "role": "system",
             "content": system_prompt,
         }
-        # new_message = {"role": "user", "content": transcription}
 
         chat = (
             await db.execute(
