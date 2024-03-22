@@ -3,7 +3,6 @@ import multiprocessing
 from time import time
 from typing import Optional
 import requests
-from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect

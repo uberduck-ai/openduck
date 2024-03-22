@@ -9,10 +9,9 @@ import boto3
 
 from openduck_py.db import AsyncSession
 from openduck_py.models.chat_record import EventName, DBChatRecord
-from openduck_py.settings import WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE
+from openduck_py.settings import WS_SAMPLE_RATE, OUTPUT_SAMPLE_RATE, AUDIO_UPLOAD_BUCKET
 
 
-BUCKET_NAME = "openduck-us-west-2"
 LOG_TO_S3 = True
 
 
@@ -39,8 +38,8 @@ async def log_event(
 
         if LOG_TO_S3:
             s3_client = boto3.client("s3")
-            s3_client.upload_file(str(abs_path), BUCKET_NAME, log_path)
-            print(f"Uploaded wavfile to s3://{BUCKET_NAME}/{log_path}")
+            s3_client.upload_file(str(abs_path), AUDIO_UPLOAD_BUCKET, log_path)
+            print(f"Uploaded wavfile to s3://{AUDIO_UPLOAD_BUCKET}/{log_path}")
 
         meta = {"audio_url": log_path}
     record = DBChatRecord(

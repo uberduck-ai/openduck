@@ -11,6 +11,7 @@ CHUNK_SIZE = 10240
 LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
 CHAT_MODEL = "azure/gpt-35-turbo-deployment"
 CHAT_MODEL_GPT4 = "azure/gpt-4-deployment"
+AUDIO_UPLOAD_BUCKET = os.environ.get("AUDIO_UPLOAD_BUCKET", "openduck-us-west-2")
 
 # to not break existing env files
 os.environ["AZURE_API_KEY"] = os.environ.get("AZURE_OPENAI_API_KEY", "")
