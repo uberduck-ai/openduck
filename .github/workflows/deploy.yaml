@@ -267,7 +267,7 @@ jobs:
         uses: ianbelcher/eks-kubectl-action@master
         with:
           cluster_name: ${{ env.environment }}-uberduck
-          args: set image --namespace default --record deployment/openduck-streamlit streamlit=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck-streamlit:${{ needs.build-openduck.outputs.imageTag }}
+          args: set image --namespace default --record deployment/openduck-streamlit openduck-streamlit=${{ secrets.AWS_ECR_REGISTRY }}/${{ env.environment }}-openduck-streamlit:${{ needs.build-openduck.outputs.imageTag }}
 
   stop-runner-openduck:
     name: Terminate openduck runner
