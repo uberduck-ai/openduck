@@ -130,10 +130,10 @@ function Tile({
   );
 }
 
-function Spinner() {
+function Spinner({ color = "text-black" }) {
   return (
     <svg
-      className="animate-spin -ml-1 mr-3 h-5 w-5 text-black"
+      className={`animate-spin -ml-1 mr-3 h-5 w-5 ${color}`}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -257,6 +257,8 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [userName, setUserName] = useState<string>("");
+  const meetingState = useMeetingState();
+  const [isJoining, setIsJoining] = useState(false);
 
   const toggleMic = () => {
     callObject?.setLocalAudio(!callObject?.localAudio());
@@ -273,6 +275,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
     if (joinedRoom) {
       leaveCall();
     } else {
+      setIsJoining(true);
       try {
         const response = await fetch(`${apiHost}/audio/start`, {
           method: "POST",
@@ -299,6 +302,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
             await new Promise((resolve) => setTimeout(resolve, 1000)); // Sleep for 1 second
             await callObject?.join({ url: room.url, userName: userName });
           }
+          setIsJoining(false);
           setJoinedRoom(true);
         } else {
           console.error("Failed to create room");
@@ -306,6 +310,8 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         }
       } catch (error) {
         console.error("Error creating room:", error);
+      } finally {
+        setIsJoining(false);
       }
     }
   }, [callObject, roomUrl, userName, joinedRoom]);
@@ -321,16 +327,17 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         disabled={joinedRoom}
       />*/}
       <button
-        className={`orb-button w-48 h-48 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 cursor-pointer shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${
-          ""
-          // !userName && "opacity-50 cursor-not-allowed"
+        className={`orb-button w-48 h-48 bg-blue-500 enabled:hover:bg-blue-600 text-white rounded-full p-4 shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${
+          isJoining && "opacity-50 cursor-not-allowed"
         }`}
         onClick={handleOrbClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
         // disabled={!userName}
+        disabled={isJoining}
       >
-        {joinedRoom ? "Leave Room" : "Start"}
+        <div>{isJoining && <Spinner color="text-white" />}</div>
+        <div>{joinedRoom ? "Leave Room" : "Start"}</div>
       </button>
       {roomUrl && false && <div className="text-sm">Room URL: {roomUrl}</div>}
       <div>
