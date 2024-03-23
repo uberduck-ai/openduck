@@ -7,7 +7,6 @@ import httpx
 from pydantic import BaseModel
 
 DAILY_API_KEY = os.environ.get("DAILY_API_KEY")
-print("DAILY_API_KEY", DAILY_API_KEY)
 
 
 class RoomCreateResponse(BaseModel):

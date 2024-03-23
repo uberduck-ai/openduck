@@ -3,20 +3,24 @@ from time import time
 from typing import Literal, Optional, List, AsyncGenerator
 import re
 from io import BytesIO
+import tempfile
+import os
 
 from litellm import acompletion
 from sqlalchemy import select
 import numpy as np
 import httpx
+from deepgram import DeepgramClient, PrerecordedOptions, FileSource
+from scipy.io.wavfile import write
 
-from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.settings import (
     CHUNK_SIZE,
     WS_SAMPLE_RATE,
     CHAT_MODEL_GPT4,
-    CHAT_MODEL,
     LOG_TO_SLACK,
     ML_API_URL,
+    ASR_METHOD,
+    DEEPGRAM_API_SECRET,
 )
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import AsyncSession, SessionAsync
@@ -29,6 +33,10 @@ from openduck_py.utils.third_party_tts import (
     ELEVENLABS_VIKRAM,
     ELEVENLABS_CHRIS,
 )
+
+
+if ASR_METHOD == "deepgram":
+    deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
 
 
 async def _completion_with_retry(chat_model, messages):
@@ -73,19 +81,45 @@ async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
 
 async def _transcribe(audio_data: np.ndarray) -> str:
     assert audio_data.dtype == np.float32
-    wav_io = BytesIO(audio_data.tobytes())
-    wav_data = wav_io.getvalue()
 
-    # Send the POST request to the endpoint
-    url = f"{ML_API_URL}/ml/transcribe"
-    files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, files=files)
+    if ASR_METHOD == "whisper":
+        wav_io = BytesIO(audio_data.tobytes())
+        wav_data = wav_io.getvalue()
 
-    if response.status_code == 200:
-        return response.json()["text"]
+        # Send the POST request to the endpoint
+        url = f"{ML_API_URL}/ml/transcribe"
+        files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, files=files)
+
+        if response.status_code == 200:
+            return response.json()["text"]
+        else:
+            raise Exception(
+                f"Transcription failed with status code {response.status_code}"
+            )
+    elif ASR_METHOD == "deepgram":
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+            write(tmp_file, WS_SAMPLE_RATE, audio_data)
+            tmp_file_path = tmp_file.name
+        payload: FileSource = {
+            "buffer": open(tmp_file_path, "rb"),
+        }
+        options = PrerecordedOptions(
+            model="nova-2",
+        )
+        try:
+            response = deepgram.listen.prerecorded.v("1").transcribe_file(
+                payload, options
+            )
+            transcript = response.results.channels[0].alternatives[0].transcript
+        finally:
+            os.remove(tmp_file_path)
+
+        return transcript
+
     else:
-        raise Exception(f"Transcription failed with status code {response.status_code}")
+        raise ValueError
 
 
 class SileroVad:
@@ -128,6 +162,7 @@ class WavAppender:
         self.params_set = False
 
     def open_file(self):
+        # TODO (Matthew): Delete this function?
         self.file = wave.open(
             self.wav_file_path,
             "wb" if not os.path.exists(self.wav_file_path) else "r+b",
