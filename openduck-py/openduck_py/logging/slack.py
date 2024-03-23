@@ -12,8 +12,10 @@ _client = s3_client()  # NOTE (Sam): should we move this to utils/s3?
 
 
 def log_audio_to_slack(audio_path):
+    print("log_audio_to_slack", audio_path)
     _client.upload_file(audio_path, LOGGING_BUCKET, audio_path)
     url = f"https://{LOGGING_BUCKET}.s3.amazonaws.com/{audio_path}"
+    print("finished uploading file: ", url)
     response = requests.post(
         "https://slack.com/api/chat.postMessage",
         params={
@@ -22,4 +24,5 @@ def log_audio_to_slack(audio_path):
         },
         headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
     )
+    print("SLACK RESPONSE: ", response.text, response.status_code)
     response.raise_for_status()
