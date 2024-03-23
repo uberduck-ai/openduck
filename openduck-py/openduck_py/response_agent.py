@@ -31,6 +31,26 @@ from openduck_py.utils.third_party_tts import (
 )
 
 
+async def _completion_with_retry(chat_model, messages):
+
+    # NOTE(zach): retries
+    response = None
+    for _retry in range(3):
+        try:
+            response = await acompletion(
+                chat_model,
+                messages,
+                temperature=1.2,
+                stream=True,
+            )
+        except Exception:
+            if _retry == 2:
+                raise
+        else:
+            break
+    return response
+
+
 async def _normalize_text(text: str) -> str:
     url = f"{ML_API_URL}/ml/normalize"
     async with httpx.AsyncClient() as client:
@@ -133,6 +153,7 @@ class WavAppender:
             self.params_set = False
 
     def log(self):
+        print("Logging audio to Slack", LOG_TO_SLACK, self.wav_file_path, flush=True)
         if LOG_TO_SLACK:
             log_audio_to_slack(self.wav_file_path)
 
@@ -265,21 +286,10 @@ class ResponseAgent:
         if new_message is not None:
             messages.append(new_message)
 
-        # NOTE(zach): retries
-        response = None
-        for _retry in range(3):
-            try:
-                response = await acompletion(
-                    chat_model,
-                    messages,
-                    temperature=1.2,
-                    stream=True,
-                )
-            except Exception:
-                if _retry == 2:
-                    raise
-            else:
-                break
+        chat.history_json["messages"] = messages
+        await db.commit()
+
+        response = await _completion_with_retry(chat_model, messages)
         complete_sentence = ""
         full_response = ""
         if response is None:
@@ -293,6 +303,11 @@ class ResponseAgent:
             # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
             if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
                 await self.speak_response(complete_sentence, db, t_whisper)
+                inprogress_messages = messages + [
+                    {"role": "assistant", "content": full_response}
+                ]
+                chat.history_json["messages"] = inprogress_messages
+                await db.commit()
                 complete_sentence = ""
 
         messages.append({"role": "assistant", "content": full_response})
