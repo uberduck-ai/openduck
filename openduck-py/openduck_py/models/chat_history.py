@@ -16,7 +16,7 @@ class DBChatHistory(Base):
     __tablename__ = "chat_history"
     id = Column(Integer, primary_key=True)
     session_id = Column(Text, nullable=False, index=True)
-    history_json = Column(MutableDict.as_mutable(JSON))
+    history_json = Column(JSON)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 

@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import os
 import re
 import multiprocessing
@@ -76,20 +77,37 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
 async def daily_consumer(
     queue: asyncio.Queue, interrupt: asyncio.Event, mic: VirtualMicrophoneDevice
 ):
+
+    buffer_estimate = 0
+    buffer_estimate_t0 = None
+
     while True:
         if interrupt.is_set():
             await asyncio.sleep(0.1)
             continue
 
-        chunk = await queue.get()  # Dequeue a chunk
-        print("queue size: ", queue.qsize())
+        try:
+            chunk = await asyncio.wait_for(queue.get(), timeout=0.1)  # Dequeue a chunk
+        except asyncio.TimeoutError:
+            buffer_estimate = 0
+            continue
+
+        if buffer_estimate == 0:
+            buffer_estimate_t0 = time()
+        assert buffer_estimate_t0 is not None
+        buffer_estimate += len(chunk)
+        buffered_time_seconds = buffer_estimate / 2 / OUTPUT_SAMPLE_RATE
+        clock_time_seconds = time() - buffer_estimate_t0
+
+        MAX_LAG = 1
+
         if chunk:
+            if buffered_time_seconds > clock_time_seconds + MAX_LAG:
+                await asyncio.sleep(
+                    buffered_time_seconds - clock_time_seconds - MAX_LAG
+                )
             mic.write_frames(chunk)
             queue.task_done()
-            # NOTE(zach): Avoid writ
-            chunk_time_seconds = len(chunk) / 2 / OUTPUT_SAMPLE_RATE
-            await asyncio.sleep(chunk_time_seconds / 4)
-            print("CHUNK TIME SECONDS: ", chunk_time_seconds)
 
 
 async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
@@ -224,7 +242,10 @@ async def connect_daily(
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
-        "my-mic", sample_rate=OUTPUT_SAMPLE_RATE, channels=1, non_blocking=True
+        "my-mic",
+        sample_rate=OUTPUT_SAMPLE_RATE,
+        channels=1,
+        non_blocking=True,
     )
     speaker = Daily.create_speaker_device(
         "my-speaker", sample_rate=WS_SAMPLE_RATE, channels=1
