@@ -227,6 +227,7 @@ async def connect_daily(
     voice_id=None,
     speak_first=False,
     context: Optional[Dict[str, str]] = None,
+    record=True
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
@@ -273,7 +274,7 @@ async def connect_daily(
         base_context.update(context)
     responder = ResponseAgent(
         session_id=session_id,
-        record=False,
+        record=record,
         input_audio_format="int16",
         tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         system_prompt=system_prompt,
@@ -286,6 +287,9 @@ async def connect_daily(
     if speak_first:
         async with SessionAsync() as db:
             participants = client.participants()
+            while len(participants) < 2:
+                await asyncio.sleep(0.1)
+                participants = client.participants()
             participant_names = [
                 p["info"].get("userName", "unknown").split(" (AI)")[0]
                 for p in participants.values()

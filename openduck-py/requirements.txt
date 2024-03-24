@@ -25,6 +25,7 @@ python-multipart
 requests
 scipy
 setuptools
+slack_sdk
 sqlalchemy
 sqlalchemy_utils
 torch

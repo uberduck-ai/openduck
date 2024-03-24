@@ -5,6 +5,7 @@ import re
 from io import BytesIO
 import tempfile
 import os
+import wave
 
 from litellm import acompletion
 from sqlalchemy import select
@@ -156,13 +157,13 @@ class SileroVad:
 
 
 class WavAppender:
-    def __init__(self, wav_file_path="output.wav"):
-        self.wav_file_path = wav_file_path
+    def __init__(self, local_path="output.wav", remote_path="output.wav"):
+        self.wav_file_path = local_path
+        self.remote_path = remote_path
         self.file = None
         self.params_set = False
 
     def open_file(self):
-        # TODO (Matthew): Delete this function?
         self.file = wave.open(
             self.wav_file_path,
             "wb" if not os.path.exists(self.wav_file_path) else "r+b",
@@ -190,7 +191,7 @@ class WavAppender:
     def log(self):
         print("Logging audio to Slack", LOG_TO_SLACK, self.wav_file_path, flush=True)
         if LOG_TO_SLACK:
-            log_audio_to_slack(self.wav_file_path)
+            log_audio_to_slack(self.wav_file_path, self.remote_path)
 
 
 class ResponseAgent:
@@ -208,7 +209,14 @@ class ResponseAgent:
         self.is_responding = False
         self.input_audio_format = input_audio_format
         self.audio_data: List[np.ndarray] = []
-        self.recorder = WavAppender(wav_file_path=f"{session_id}.wav")
+        self.recorder = WavAppender(
+            local_path=os.path.join(
+                os.path.dirname(__file__),
+                f"../logs/{session_id}",
+                f"{session_id}.wav",
+            ),
+            remote_path=f"recordings/{session_id}.wav",
+        )
         self.vad = SileroVad()
         self.record = record
         self.time_of_last_activity = time()
