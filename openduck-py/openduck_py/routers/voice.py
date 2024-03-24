@@ -227,7 +227,7 @@ async def connect_daily(
     voice_id=None,
     speak_first=False,
     context: Optional[Dict[str, str]] = None,
-    record=True
+    record=True,
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
