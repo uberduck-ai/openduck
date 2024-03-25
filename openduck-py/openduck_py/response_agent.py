@@ -289,7 +289,8 @@ class ResponseAgent:
 
     async def receive_audio(self, message: bytes):
 
-        self.dg_connection.send(message)
+        if ASR_METHOD == "deepgram":
+            self.dg_connection.send(message)
 
         # Convert the input audio from input_audio_format to float32
         # Silero VAD and Whisper require float32
