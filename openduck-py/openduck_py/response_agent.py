@@ -37,7 +37,6 @@ from openduck_py.logging.db import log_event
 from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
 
 
-# if ASR_METHOD == "deepgram":
 deepgram_client = DeepgramClient(DEEPGRAM_API_SECRET)
 
 
@@ -61,47 +60,47 @@ async def _inference(sentence: str) -> AsyncGenerator[bytes, None]:
             yield chunk
 
 
-async def _transcribe(audio_data: np.ndarray) -> str:
-    assert audio_data.dtype == np.float32
+# async def _transcribe(audio_data: np.ndarray) -> str:
+#     assert audio_data.dtype == np.float32
 
-    if ASR_METHOD == "whisper":
-        wav_io = BytesIO(audio_data.tobytes())
-        wav_data = wav_io.getvalue()
+#     if ASR_METHOD == "whisper":
+#         wav_io = BytesIO(audio_data.tobytes())
+#         wav_data = wav_io.getvalue()
 
-        # Send the POST request to the endpoint
-        url = f"{ML_API_URL}/ml/transcribe"
-        files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, files=files)
+#         # Send the POST request to the endpoint
+#         url = f"{ML_API_URL}/ml/transcribe"
+#         files = {"audio": ("audio.wav", wav_data, "application/octet-stream")}
+#         async with httpx.AsyncClient() as client:
+#             response = await client.post(url, files=files)
 
-        if response.status_code == 200:
-            return response.json()["text"]
-        else:
-            raise Exception(
-                f"Transcription failed with status code {response.status_code}"
-            )
-    elif ASR_METHOD == "deepgram":
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-            write(tmp_file, WS_SAMPLE_RATE, audio_data)
-            tmp_file_path = tmp_file.name
-        payload: FileSource = {
-            "buffer": open(tmp_file_path, "rb"),
-        }
-        options = PrerecordedOptions(
-            model="nova-2",
-        )
-        try:
-            response = deepgram_client.listen.prerecorded.v("1").transcribe_file(
-                payload, options
-            )
-            transcript = response.results.channels[0].alternatives[0].transcript
-        finally:
-            os.remove(tmp_file_path)
+#         if response.status_code == 200:
+#             return response.json()["text"]
+#         else:
+#             raise Exception(
+#                 f"Transcription failed with status code {response.status_code}"
+#             )
+#     elif ASR_METHOD == "deepgram":
+#         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+#             write(tmp_file, WS_SAMPLE_RATE, audio_data)
+#             tmp_file_path = tmp_file.name
+#         payload: FileSource = {
+#             "buffer": open(tmp_file_path, "rb"),
+#         }
+#         options = PrerecordedOptions(
+#             model="nova-2",
+#         )
+#         try:
+#             response = deepgram_client.listen.prerecorded.v("1").transcribe_file(
+#                 payload, options
+#             )
+#             transcript = response.results.channels[0].alternatives[0].transcript
+#         finally:
+#             os.remove(tmp_file_path)
 
-        return transcript
+#         return transcript
 
-    else:
-        raise ValueError
+#     else:
+#         raise ValueError
 
 
 class SileroVad:
@@ -176,10 +175,8 @@ class WavAppender:
 
 
 def on_message(self, result, **kwargs):
-    print(result.channel.alternatives)
     transcript = result.channel.alternatives[0].transcript
-    if transcript:
-        print("DEEPGRAM TRANSCRIPT: ", transcript, flush=True)
+    print("DEEPGRAM TRANSCRIPT: ", transcript, flush=True)
 
 
 class ResponseAgent:
@@ -203,12 +200,12 @@ class ResponseAgent:
         self.time_of_last_activity = time()
         self.response_task: Optional[asyncio.Task] = None
         self.system_prompt = system_prompt
-        self.deepgram_socket = deepgram_client.listen.live.v("1")
+        self.dg_connection = deepgram_client.listen.live.v("1")
         options = LiveOptions(
             model="nova-2",
             punctuate=True,
             language="en-US",
-            # encoding="float32",
+            encoding="float32",
             channels=1,
             sample_rate=WS_SAMPLE_RATE,
             # To get UtteranceEnd, the following must be set:
@@ -216,9 +213,9 @@ class ResponseAgent:
             utterance_end_ms="1000",
             vad_events=True,
         )
-        self.deepgram_socket.start(options)
-        self.deepgram_socket.on(LiveTranscriptionEvents.Transcript, on_message)
-        # self.deepgram_socket.on(LiveTranscriptionEvents.Error, self.on_error)
+
+        self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
+        self.dg_connection.start(options)
 
         if context is None:
             context = {}
@@ -227,9 +224,6 @@ class ResponseAgent:
         if tts_config is None:
             tts_config = TTSConfig()
         self.tts_config = tts_config
-
-    # def on_error(self, error, **kwargs):
-    #     print("DEEPGRAM ERROR: ", error, flush=True)
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -255,8 +249,11 @@ class ResponseAgent:
         self.audio_data.append(audio_16k_np)
         if self.record:
             self.recorder.append(audio_16k_np)
-        self.deepgram_socket.send(audio_16k_np.tobytes())
 
+        try:
+            self.dg_connection.send(audio_16k_np.tobytes())
+        except AttributeError as e:
+            print("DEEPGRAM ERROR: ", e, flush=True)
         i = 0
         while i < len(audio_16k_np):
             upper = i + self.vad.window_size
@@ -365,7 +362,8 @@ class ResponseAgent:
             await log_event(db, self.session_id, "started_response", audio=audio_data)
             t_0 = time()
 
-            transcription = await _transcribe(audio_data)
+            # transcription = await _transcribe(audio_data)
+            transcription = "Test"
 
             print("TRANSCRIPTION: ", transcription, flush=True)
             t_whisper = time()

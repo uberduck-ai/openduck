@@ -45,8 +45,8 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
             response_task.result()
         except asyncio.CancelledError:
             print("response task was cancelled")
-        except Exception as e:
-            print("response task raised an exception:", e)
+        # except Exception as e:
+        #     print("response task raised an exception:", e)
         else:
             print(
                 "response task completed successfully. Resetting audio_data and response_task"
