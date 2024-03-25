@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Optional, Dict
 from pathlib import Path
@@ -29,18 +30,29 @@ async def log_event(
         log_path = f"logs/{session_id}/{event}_{time()}.wav"
         abs_path = Path(__file__).resolve().parents[2] / log_path
         session_folder = abs_path.parent
-        if not os.path.exists(session_folder):
-            os.makedirs(session_folder)
+        if not session_folder.exists():
+            session_folder.mkdir(parents=True)
 
         sample_rate = WS_SAMPLE_RATE
         if event == "generated_tts":
             sample_rate = OUTPUT_SAMPLE_RATE
-        wavfile.write(abs_path, sample_rate, audio)
+
+        # Use scipy's write function in an executor to run it in a thread
+        await asyncio.get_running_loop().run_in_executor(
+            None, wavfile.write, abs_path, sample_rate, audio
+        )
         print(f"Wrote wavfile to {abs_path}")
 
         if LOG_TO_S3:
+            # Use boto3's upload_file function in an executor
             s3_client = boto3.client("s3")
-            s3_client.upload_file(str(abs_path), AUDIO_UPLOAD_BUCKET, log_path)
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                s3_client.upload_file,
+                str(abs_path),
+                AUDIO_UPLOAD_BUCKET,
+                log_path,
+            )
             print(f"Uploaded wavfile to s3://{AUDIO_UPLOAD_BUCKET}/{log_path}")
 
         meta = {"audio_url": log_path}

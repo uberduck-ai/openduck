@@ -8,6 +8,7 @@ from typing import Optional, Dict
 import requests
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
 import numpy as np
 from scipy.io import wavfile
@@ -263,6 +264,17 @@ async def connect_daily(
     }
     if context is not None:
         base_context.update(context)
+    if record:
+        async with httpx.AsyncClient() as _http_client:
+            room_id = room.split("/")[-1]
+            print(f"Room ID: {room_id}")
+            _recording_response = await _http_client.post(
+                f"https://api.daily.co/v1/rooms/{room_id}/recordings/start",
+                headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
+            )
+            _recording_response.raise_for_status()
+            print(_recording_response.json())
+
     responder = ResponseAgent(
         session_id=session_id,
         record=record,
@@ -300,6 +312,7 @@ async def connect_daily(
                 ),
                 chat_model=CHAT_MODEL,
             )
+    responder.vad.init()
     # NOTE(zach): The main loop of receiving audio and sending it to the agent.
     while True:
         _check_for_exceptions(responder.response_task)
@@ -309,7 +322,7 @@ async def connect_daily(
 
         message = speaker.read_frames(WS_SAMPLE_RATE // 10)
         if len(message) > 0:
-            await responder.receive_audio(message)
+            asyncio.create_task(responder.receive_audio(message))
         await asyncio.sleep(0.01)
 
     try:

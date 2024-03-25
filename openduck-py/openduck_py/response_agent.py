@@ -128,6 +128,25 @@ class SileroVad:
     # Default window size in examples at https://github.com/snakers4/silero-vad/wiki/Examples-and-Dependencies#examples
     window_size = 512
 
+    def init(self):
+        # Lazy import torch so that it doesn't slow down creating a new Daily room for the user
+        import torch
+
+        if self.model is None:
+            model, utils = torch.hub.load(
+                repo_or_dir="snakers4/silero-vad", model="silero_vad"
+            )
+            self.model = model
+            self.utils = utils
+            (
+                get_speech_timestamps,
+                save_audio,
+                read_audio,
+                VADIterator,
+                collect_chunks,
+            ) = utils
+            self.vad_iterator = VADIterator(self.model)
+
     def reset_states(self):
         if hasattr(self, "vad_iterator"):
             self.vad_iterator.reset_states()
@@ -218,6 +237,7 @@ class ResponseAgent:
             remote_path=f"recordings/{session_id}.wav",
         )
         self.vad = SileroVad()
+        # self.vad.init()
         self.record = record
         self.time_of_last_activity = time()
         self.response_task: Optional[asyncio.Task] = None
@@ -231,6 +251,8 @@ class ResponseAgent:
         if tts_config is None:
             tts_config = TTSConfig()
         self.tts_config = tts_config
+
+        self._time_of_last_record = None
 
     def _reset_transcription(self):
         self.audio_data = []
@@ -264,6 +286,11 @@ class ResponseAgent:
 
         self.audio_data.append(audio_16k_np)
         if self.record:
+            if self._time_of_last_record is None:
+                self._time_of_last_record = time()
+            elif time() - self._time_of_last_record > 0.2:
+                print("TOOOOO SLOW: ", time() - self._time_of_last_record)
+            self._time_of_last_record = time()
             self.recorder.append(audio_16k_np)
         i = 0
         while i < len(audio_16k_np):
@@ -281,9 +308,7 @@ class ResponseAgent:
                         await log_event(db, self.session_id, "detected_end_of_speech")
                         if self.response_task is None or self.response_task.done():
                             self.response_task = asyncio.create_task(
-                                self.start_response(
-                                    np.concatenate(self.audio_data),
-                                )
+                                self.start_response(self.audio_data)
                             )
                         else:
                             print("already responding")
@@ -363,8 +388,9 @@ class ResponseAgent:
 
     async def start_response(
         self,
-        audio_data: np.ndarray,
+        audio_data: List[np.ndarray],
     ):
+        audio_data = np.concatenate(audio_data)
         self.is_responding = True
         try:
             async with SessionAsync() as db:
