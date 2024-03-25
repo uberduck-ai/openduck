@@ -10,7 +10,13 @@ from litellm import acompletion
 from sqlalchemy import select
 import numpy as np
 import httpx
-from deepgram import DeepgramClient, PrerecordedOptions, FileSource
+from deepgram import (
+    DeepgramClient,
+    PrerecordedOptions,
+    FileSource,
+    LiveOptions,
+    LiveTranscriptionEvents,
+)
 from scipy.io.wavfile import write
 
 from openduck_py.configs.tts_config import TTSConfig
@@ -31,8 +37,8 @@ from openduck_py.logging.db import log_event
 from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
 
 
-if ASR_METHOD == "deepgram":
-    deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
+# if ASR_METHOD == "deepgram":
+deepgram_client = DeepgramClient(DEEPGRAM_API_SECRET)
 
 
 async def _normalize_text(text: str) -> str:
@@ -85,7 +91,7 @@ async def _transcribe(audio_data: np.ndarray) -> str:
             model="nova-2",
         )
         try:
-            response = deepgram.listen.prerecorded.v("1").transcribe_file(
+            response = deepgram_client.listen.prerecorded.v("1").transcribe_file(
                 payload, options
             )
             transcript = response.results.channels[0].alternatives[0].transcript
@@ -169,6 +175,13 @@ class WavAppender:
             log_audio_to_slack(self.wav_file_path)
 
 
+def on_message(self, result, **kwargs):
+    print(result.channel.alternatives)
+    transcript = result.channel.alternatives[0].transcript
+    if transcript:
+        print("DEEPGRAM TRANSCRIPT: ", transcript, flush=True)
+
+
 class ResponseAgent:
     def __init__(
         self,
@@ -190,6 +203,22 @@ class ResponseAgent:
         self.time_of_last_activity = time()
         self.response_task: Optional[asyncio.Task] = None
         self.system_prompt = system_prompt
+        self.deepgram_socket = deepgram_client.listen.live.v("1")
+        options = LiveOptions(
+            model="nova-2",
+            punctuate=True,
+            language="en-US",
+            # encoding="float32",
+            channels=1,
+            sample_rate=WS_SAMPLE_RATE,
+            # To get UtteranceEnd, the following must be set:
+            interim_results=True,
+            utterance_end_ms="1000",
+            vad_events=True,
+        )
+        self.deepgram_socket.start(options)
+        self.deepgram_socket.on(LiveTranscriptionEvents.Transcript, on_message)
+        # self.deepgram_socket.on(LiveTranscriptionEvents.Error, self.on_error)
 
         if context is None:
             context = {}
@@ -198,6 +227,9 @@ class ResponseAgent:
         if tts_config is None:
             tts_config = TTSConfig()
         self.tts_config = tts_config
+
+    # def on_error(self, error, **kwargs):
+    #     print("DEEPGRAM ERROR: ", error, flush=True)
 
     def interrupt(self, task: asyncio.Task):
         assert self.is_responding
@@ -208,6 +240,7 @@ class ResponseAgent:
     async def receive_audio(self, message: bytes):
         # Convert the input audio from input_audio_format to float32
         # Silero VAD and Whisper require float32
+        # TODO (Matthew): Rename audio_16k_np to audio_np or something
         if self.input_audio_format == "float32":
             audio_16k_np = np.frombuffer(message, dtype=np.float32)
         elif self.input_audio_format == "int32":
@@ -222,6 +255,8 @@ class ResponseAgent:
         self.audio_data.append(audio_16k_np)
         if self.record:
             self.recorder.append(audio_16k_np)
+        self.deepgram_socket.send(audio_16k_np.tobytes())
+
         i = 0
         while i < len(audio_16k_np):
             upper = i + self.vad.window_size
@@ -230,7 +265,6 @@ class ResponseAgent:
             audio_16k_chunk = audio_16k_np[i:upper]
             vad_result = self.vad(audio_16k_chunk)
             if vad_result:
-                # TODO (Matthew): Can we send telemetry via an API instead of saving to a database?
                 async with SessionAsync() as db:
                     if "end" in vad_result:
                         print("end of speech detected.")
