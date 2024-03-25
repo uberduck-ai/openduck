@@ -2,6 +2,7 @@ aioboto3
 aiosqlite
 alembic
 daily-python
+deepgram-sdk
 einops
 einops_exts
 fastapi
