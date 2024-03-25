@@ -1,11 +1,18 @@
 import asyncio
+import concurrent.futures
+import os
+import re
 import multiprocessing
 from time import time
-from typing import Optional
+from typing import Optional, Dict
 import requests
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+import httpx
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
+import numpy as np
+from scipy.io import wavfile
+from sqlalchemy import select
 from daily import *
 
 from openduck_py.response_agent import ResponseAgent
@@ -38,28 +45,50 @@ Daily.init()
 processes = {}
 
 
-def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
-    reset_state = False
+def _check_for_exceptions(response_task: Optional[asyncio.Task]):
     if response_task and response_task.done():
         try:
-            response_task.result()
+            return response_task.result()
         except asyncio.CancelledError:
             print("response task was cancelled")
         except Exception as e:
             print("response task raised an exception:", e)
         else:
-            print(
-                "response task completed successfully. Resetting audio_data and response_task"
-            )
-            reset_state = True
-
-    return reset_state
+            print("response task completed successfully.")
 
 
-async def daily_consumer(queue: asyncio.Queue, mic: VirtualMicrophoneDevice):
+async def daily_consumer(
+    queue: asyncio.Queue, interrupt: asyncio.Event, mic: VirtualMicrophoneDevice
+):
+
+    buffer_estimate = 0
+    buffer_estimate_t0 = None
+
     while True:
-        chunk = await queue.get()  # Dequeue a chunk
+        if interrupt.is_set():
+            await asyncio.sleep(0.1)
+            continue
+
+        try:
+            chunk = await asyncio.wait_for(queue.get(), timeout=0.1)  # Dequeue a chunk
+        except asyncio.TimeoutError:
+            buffer_estimate = 0
+            continue
+
+        if buffer_estimate == 0:
+            buffer_estimate_t0 = time()
+        assert buffer_estimate_t0 is not None
+        buffer_estimate += len(chunk)
+        buffered_time_seconds = buffer_estimate / 2 / OUTPUT_SAMPLE_RATE
+        clock_time_seconds = time() - buffer_estimate_t0
+
+        MAX_LAG = 1
+
         if chunk:
+            if buffered_time_seconds > clock_time_seconds + MAX_LAG:
+                await asyncio.sleep(
+                    buffered_time_seconds - clock_time_seconds - MAX_LAG
+                )
             mic.write_frames(chunk)
             queue.task_done()
 
@@ -74,7 +103,10 @@ async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
 
 
 @audio_router.post("/start")
-async def create_room_and_start():
+async def create_room_and_start(request: Request):
+    request_data = await request.json()
+    context = request_data.get("context", {})
+
     room_info = await create_room()
     print("created room")
 
@@ -86,6 +118,7 @@ async def create_room_and_start():
             prompt="podcast_host",
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
+            context=context,
         ),
     )
     process.start()
@@ -161,10 +194,7 @@ async def audio_response(
             if time() - responder.time_of_last_activity > 300:
                 print("closing websocket due to inactivity")
                 break
-            if _check_for_exceptions(responder.response_task):
-                responder.audio_data = []
-                responder.response_task = None
-                responder.time_of_last_activity = time()
+            _check_for_exceptions(responder.response_task)
             try:
                 message = await websocket.receive_bytes()
                 await responder.receive_audio(message)
@@ -188,10 +218,15 @@ async def connect_daily(
     system_prompt="system-prompt",
     voice_id=None,
     speak_first=False,
+    context: Optional[Dict[str, str]] = None,
+    record=True,
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
-        "my-mic", sample_rate=OUTPUT_SAMPLE_RATE, channels=1, non_blocking=True
+        "my-mic",
+        sample_rate=OUTPUT_SAMPLE_RATE,
+        channels=1,
+        non_blocking=True,
     )
     speaker = Daily.create_speaker_device(
         "my-speaker", sample_rate=WS_SAMPLE_RATE, channels=1
@@ -224,23 +259,42 @@ async def connect_daily(
         },
     )
     my_name = username.split(" (AI)")[0]
-    context = {
+    base_context = {
         "my_name": my_name,
     }
+    if context is not None:
+        base_context.update(context)
+    if record:
+        async with httpx.AsyncClient() as _http_client:
+            room_id = room.split("/")[-1]
+            print(f"Room ID: {room_id}")
+            _recording_response = await _http_client.post(
+                f"https://api.daily.co/v1/rooms/{room_id}/recordings/start",
+                headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
+            )
+            _recording_response.raise_for_status()
+            print(_recording_response.json())
+
     responder = ResponseAgent(
         session_id=session_id,
-        record=False,
+        record=record,
         input_audio_format="int16",
-        tts_config=TTSConfig(provider="local", voice_id=voice_id),
+        tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         system_prompt=system_prompt,
-        context=context,
+        context=base_context,
     )
-    asyncio.create_task(daily_consumer(responder.response_queue, mic))
+    asyncio.create_task(
+        daily_consumer(responder.response_queue, responder.interrupt_event, mic)
+    )
+    # NOTE(zach): this is the first greeting
     if speak_first:
         async with SessionAsync() as db:
             participants = client.participants()
+            while len(participants) < 2:
+                await asyncio.sleep(0.1)
+                participants = client.participants()
             participant_names = [
-                p["info"]["userName"].split(" (AI)")[0]
+                p["info"].get("userName", "unknown").split(" (AI)")[0]
                 for p in participants.values()
                 if not p["info"]["isLocal"]
             ]
@@ -249,33 +303,37 @@ async def connect_daily(
                 t_whisper=time(),
                 new_message=None,
                 system_prompt=prompt(
-                    f"most-interesting-bot/intro-prompt",
-                    {
-                        "my_name": my_name,
-                        "participant_names": " and ".join(participant_names),
-                    },
+                    "intros/greeting.txt",
+                    dict(
+                        responder.context,
+                        my_name=my_name,
+                        participant_names=" and ".join(participant_names),
+                    ),
                 ),
                 chat_model=CHAT_MODEL,
             )
+    responder.vad.init()
+    # NOTE(zach): The main loop of receiving audio and sending it to the agent.
     while True:
-        if _check_for_exceptions(responder.response_task):
-            responder.audio_data = []
-            responder.response_task = None
-            responder.time_of_last_activity = time()
+        _check_for_exceptions(responder.response_task)
         if event_handler.left:
             print("left the call")
             break
 
         message = speaker.read_frames(WS_SAMPLE_RATE // 10)
         if len(message) > 0:
-            await responder.receive_audio(message)
+            asyncio.create_task(responder.receive_audio(message))
         await asyncio.sleep(0.01)
 
-    responder.recorder.close_file()
-    responder.recorder.log()
-    await responder.response_queue.join()
-    async with SessionAsync() as db:
-        await log_event(db, session_id, "ended_session")
+    try:
+        print("closing and logging to slack")
+        responder.recorder.close_file()
+        responder.recorder.log()
+        async with SessionAsync() as db:
+            await log_event(db, session_id, "ended_session")
+    finally:
+        print("exiting the process")
+        os._exit(0)
 
 
 def run_connect_daily(
@@ -284,6 +342,7 @@ def run_connect_daily(
     prompt: str,
     voice_id: Optional[str] = None,
     speak_first=False,
+    context: Optional[Dict[str, str]] = None,
 ):
     asyncio.run(
         connect_daily(
@@ -292,6 +351,7 @@ def run_connect_daily(
             system_prompt=prompt,
             voice_id=voice_id,
             speak_first=speak_first,
+            context=context,
         )
     )
 

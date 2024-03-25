@@ -4,6 +4,7 @@ from typing import Literal
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text, Float
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.orm import Mapped
 from openduck_py.db import Base
 
 EventName = Literal[
@@ -24,6 +25,8 @@ EventName = Literal[
 
 
 class DBChatRecord(Base):
+    """An event that occurred during a chat session."""
+
     __tablename__ = "chat_record"
     id = Column(Integer, primary_key=True)
     session_id = Column(

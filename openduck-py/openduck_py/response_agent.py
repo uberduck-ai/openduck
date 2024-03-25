@@ -5,6 +5,7 @@ import re
 from io import BytesIO
 import tempfile
 import os
+import wave
 
 from litellm import acompletion
 from sqlalchemy import select
@@ -13,7 +14,6 @@ import httpx
 from deepgram import DeepgramClient, PrerecordedOptions, FileSource
 from scipy.io.wavfile import write
 
-from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.settings import (
     CHUNK_SIZE,
     WS_SAMPLE_RATE,
@@ -28,11 +28,36 @@ from openduck_py.db import AsyncSession, SessionAsync
 from openduck_py.prompts import prompt
 from openduck_py.models import DBChatHistory
 from openduck_py.logging.db import log_event
-from openduck_py.utils.third_party_tts import aio_elevenlabs_tts
+from openduck_py.logging.slack import log_audio_to_slack
+from openduck_py.utils.third_party_tts import (
+    aio_elevenlabs_tts,
+    ELEVENLABS_VIKRAM,
+    ELEVENLABS_CHRIS,
+)
 
 
 if ASR_METHOD == "deepgram":
     deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
+
+
+async def _completion_with_retry(chat_model, messages):
+
+    # NOTE(zach): retries
+    response = None
+    for _retry in range(3):
+        try:
+            response = await acompletion(
+                chat_model,
+                messages,
+                temperature=1.2,
+                stream=True,
+            )
+        except Exception:
+            if _retry == 2:
+                raise
+        else:
+            break
+    return response
 
 
 async def _normalize_text(text: str) -> str:
@@ -103,6 +128,25 @@ class SileroVad:
     # Default window size in examples at https://github.com/snakers4/silero-vad/wiki/Examples-and-Dependencies#examples
     window_size = 512
 
+    def init(self):
+        # Lazy import torch so that it doesn't slow down creating a new Daily room for the user
+        import torch
+
+        if self.model is None:
+            model, utils = torch.hub.load(
+                repo_or_dir="snakers4/silero-vad", model="silero_vad"
+            )
+            self.model = model
+            self.utils = utils
+            (
+                get_speech_timestamps,
+                save_audio,
+                read_audio,
+                VADIterator,
+                collect_chunks,
+            ) = utils
+            self.vad_iterator = VADIterator(self.model)
+
     def reset_states(self):
         if hasattr(self, "vad_iterator"):
             self.vad_iterator.reset_states()
@@ -132,13 +176,13 @@ class SileroVad:
 
 
 class WavAppender:
-    def __init__(self, wav_file_path="output.wav"):
-        self.wav_file_path = wav_file_path
+    def __init__(self, local_path="output.wav", remote_path="output.wav"):
+        self.wav_file_path = local_path
+        self.remote_path = remote_path
         self.file = None
         self.params_set = False
 
     def open_file(self):
-        # TODO (Matthew): Delete this function?
         self.file = wave.open(
             self.wav_file_path,
             "wb" if not os.path.exists(self.wav_file_path) else "r+b",
@@ -164,9 +208,9 @@ class WavAppender:
             self.params_set = False
 
     def log(self):
-        # TODO (Matthew): Delete this function?
+        print("Logging audio to Slack", LOG_TO_SLACK, self.wav_file_path, flush=True)
         if LOG_TO_SLACK:
-            log_audio_to_slack(self.wav_file_path)
+            log_audio_to_slack(self.wav_file_path, self.remote_path)
 
 
 class ResponseAgent:
@@ -184,11 +228,20 @@ class ResponseAgent:
         self.is_responding = False
         self.input_audio_format = input_audio_format
         self.audio_data: List[np.ndarray] = []
-        self.recorder = WavAppender(wav_file_path=f"{session_id}.wav")
+        self.recorder = WavAppender(
+            local_path=os.path.join(
+                os.path.dirname(__file__),
+                f"../logs/{session_id}",
+                f"{session_id}.wav",
+            ),
+            remote_path=f"recordings/{session_id}.wav",
+        )
         self.vad = SileroVad()
+        # self.vad.init()
         self.record = record
         self.time_of_last_activity = time()
         self.response_task: Optional[asyncio.Task] = None
+        self.interrupt_event = asyncio.Event()
         self.system_prompt = system_prompt
 
         if context is None:
@@ -199,10 +252,22 @@ class ResponseAgent:
             tts_config = TTSConfig()
         self.tts_config = tts_config
 
-    def interrupt(self, task: asyncio.Task):
+        self._time_of_last_record = None
+
+    def _reset_transcription(self):
+        self.audio_data = []
+
+    async def _clear_queue(self):
+        while not self.response_queue.empty():
+            await self.response_queue.get()
+
+    async def interrupt(self, task: asyncio.Task):
         assert self.is_responding
         print("interrupting!")
+        self.interrupt_event.set()
         task.cancel()
+        await self._clear_queue()
+        self.interrupt_event.clear()
         self.is_responding = False
 
     async def receive_audio(self, message: bytes):
@@ -221,6 +286,11 @@ class ResponseAgent:
 
         self.audio_data.append(audio_16k_np)
         if self.record:
+            if self._time_of_last_record is None:
+                self._time_of_last_record = time()
+            elif time() - self._time_of_last_record > 0.2:
+                print("TOOOOO SLOW: ", time() - self._time_of_last_record)
+            self._time_of_last_record = time()
             self.recorder.append(audio_16k_np)
         i = 0
         while i < len(audio_16k_np):
@@ -238,9 +308,7 @@ class ResponseAgent:
                         await log_event(db, self.session_id, "detected_end_of_speech")
                         if self.response_task is None or self.response_task.done():
                             self.response_task = asyncio.create_task(
-                                self.start_response(
-                                    np.concatenate(self.audio_data),
-                                )
+                                self.start_response(self.audio_data)
                             )
                         else:
                             print("already responding")
@@ -253,7 +321,7 @@ class ResponseAgent:
                                 await log_event(
                                     db, self.session_id, "interrupted_response"
                                 )
-                                self.interrupt(self.response_task)
+                                await self.interrupt(self.response_task)
             i = upper
 
     async def _generate_and_speak(
@@ -266,12 +334,13 @@ class ResponseAgent:
     ):
         if system_prompt is None:
             system_prompt = prompt(
-                f"most-interesting-bot/{self.system_prompt}", self.context
+                f"most-interesting-bot/{self.system_prompt}.md", self.context
             )
         system_prompt = {
             "role": "system",
             "content": system_prompt,
         }
+        print("system_prompt: ", system_prompt, flush=True)
 
         chat = (
             await db.execute(
@@ -288,21 +357,11 @@ class ResponseAgent:
         if new_message is not None:
             messages.append(new_message)
 
-        # NOTE(zach): retries
-        response = None
-        for _retry in range(3):
-            try:
-                response = await acompletion(
-                    chat_model,
-                    messages,
-                    temperature=1.2,
-                    stream=True,
-                )
-            except Exception:
-                if _retry == 2:
-                    raise
-            else:
-                break
+        chat.history_json["messages"] = messages
+        await db.commit()
+        self._reset_transcription()
+
+        response = await _completion_with_retry(chat_model, messages)
         complete_sentence = ""
         full_response = ""
         if response is None:
@@ -316,6 +375,11 @@ class ResponseAgent:
             # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
             if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
                 await self.speak_response(complete_sentence, db, t_whisper)
+                inprogress_messages = messages + [
+                    {"role": "assistant", "content": full_response}
+                ]
+                chat.history_json["messages"] = inprogress_messages
+                await db.commit()
                 complete_sentence = ""
 
         messages.append({"role": "assistant", "content": full_response})
@@ -324,33 +388,42 @@ class ResponseAgent:
 
     async def start_response(
         self,
-        audio_data: np.ndarray,
+        audio_data: List[np.ndarray],
     ):
+        audio_data = np.concatenate(audio_data)
         self.is_responding = True
-        async with SessionAsync() as db:
-            await log_event(db, self.session_id, "started_response", audio=audio_data)
-            t_0 = time()
+        try:
+            async with SessionAsync() as db:
+                await log_event(
+                    db, self.session_id, "started_response", audio=audio_data
+                )
+                t_0 = time()
 
-            transcription = await _transcribe(audio_data)
+                transcription = await _transcribe(audio_data)
+                print("TRANSCRIPTION: ", transcription, flush=True)
+                t_whisper = time()
+                await log_event(
+                    db,
+                    self.session_id,
+                    "transcribed_audio",
+                    meta={"text": transcription},
+                    latency=t_whisper - t_0,
+                )
+                if not transcription or len(audio_data) < 100:
+                    return
 
-            print("TRANSCRIPTION: ", transcription, flush=True)
-            t_whisper = time()
-            await log_event(
-                db,
-                self.session_id,
-                "transcribed_audio",
-                meta={"text": transcription},
-                latency=t_whisper - t_0,
-            )
-            if not transcription or len(audio_data) < 100:
-                return
-
-            await self._generate_and_speak(
-                db,
-                t_whisper,
-                {"role": "user", "content": transcription},
-                chat_model=CHAT_MODEL_GPT4,
-            )
+                system_prompt = {
+                    "role": "system",
+                    "content": prompt(f"most-interesting-bot/{self.system_prompt}.md"),
+                }
+                await self._generate_and_speak(
+                    db,
+                    t_whisper,
+                    {"role": "user", "content": transcription},
+                    chat_model=CHAT_MODEL_GPT4,
+                )
+        finally:
+            self.is_responding = False
 
     async def speak_response(
         self,
@@ -399,6 +472,8 @@ class ResponseAgent:
 
         audio_chunk_bytes = bytes()
         async for chunk in audio_bytes_iter:
+            if self.interrupt_event.is_set():
+                break
             await self.response_queue.put(chunk)
             audio_chunk_bytes += chunk
         await log_event(

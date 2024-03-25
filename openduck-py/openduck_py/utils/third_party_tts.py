@@ -28,5 +28,5 @@ async def aio_elevenlabs_tts(
             json={"text": text},
         )
         result.raise_for_status()
-        async for chunk in result.aiter_bytes(chunk_size=1024):
+        async for chunk in result.aiter_bytes(chunk_size=16384):
             yield chunk
