@@ -259,7 +259,6 @@ class ResponseAgent:
             encoding="linear16",
             channels=1,
             sample_rate=WS_SAMPLE_RATE,
-            # To get UtteranceEnd, the following must be set:
             interim_results=True,
             utterance_end_ms="1000",
             vad_events=True,
