@@ -232,6 +232,9 @@ class ResponseAgent:
             tts_config = TTSConfig()
         self.tts_config = tts_config
 
+    def _reset_transcription(self):
+        self.audio_data = []
+
     async def _clear_queue(self):
         while not self.response_queue.empty():
             await self.response_queue.get()
@@ -331,6 +334,7 @@ class ResponseAgent:
 
         chat.history_json["messages"] = messages
         await db.commit()
+        self._reset_transcription()
 
         response = await _completion_with_retry(chat_model, messages)
         complete_sentence = ""

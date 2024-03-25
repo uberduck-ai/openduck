@@ -44,22 +44,16 @@ Daily.init()
 processes = {}
 
 
-def _check_for_exceptions(response_task: Optional[asyncio.Task]) -> bool:
-    reset_state = False
+def _check_for_exceptions(response_task: Optional[asyncio.Task]):
     if response_task and response_task.done():
         try:
-            response_task.result()
+            return response_task.result()
         except asyncio.CancelledError:
             print("response task was cancelled")
         except Exception as e:
             print("response task raised an exception:", e)
         else:
-            print(
-                "response task completed successfully. Resetting audio_data and response_task"
-            )
-            reset_state = True
-
-    return reset_state
+            print("response task completed successfully.")
 
 
 async def daily_consumer(
@@ -199,10 +193,7 @@ async def audio_response(
             if time() - responder.time_of_last_activity > 300:
                 print("closing websocket due to inactivity")
                 break
-            if _check_for_exceptions(responder.response_task):
-                responder.audio_data = []
-                responder.response_task = None
-                responder.time_of_last_activity = time()
+            _check_for_exceptions(responder.response_task)
             try:
                 message = await websocket.receive_bytes()
                 await responder.receive_audio(message)
@@ -311,10 +302,7 @@ async def connect_daily(
             )
     # NOTE(zach): The main loop of receiving audio and sending it to the agent.
     while True:
-        if _check_for_exceptions(responder.response_task):
-            responder.audio_data = []
-            responder.response_task = None
-            responder.time_of_last_activity = time()
+        _check_for_exceptions(responder.response_task)
         if event_handler.left:
             print("left the call")
             break
