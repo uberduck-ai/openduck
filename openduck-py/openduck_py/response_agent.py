@@ -251,24 +251,25 @@ class ResponseAgent:
 
         self._time_of_last_record = None
 
-        self.dg_connection = deepgram.listen.live.v("1")
-        options = LiveOptions(
-            model="nova-2",
-            punctuate=True,
-            language="en-US",
-            encoding="linear16",
-            channels=1,
-            sample_rate=WS_SAMPLE_RATE,
-            interim_results=True,
-            utterance_end_ms="1000",
-            vad_events=True,
-        )
+        if ASR_METHOD == "deepgram":
+            self.dg_connection = deepgram.listen.live.v("1")
+            options = LiveOptions(
+                model="nova-2",
+                punctuate=True,
+                language="en-US",
+                encoding="linear16",
+                channels=1,
+                sample_rate=WS_SAMPLE_RATE,
+                interim_results=True,
+                utterance_end_ms="1000",
+                vad_events=True,
+            )
 
-        self.dg_connection.on(
-            LiveTranscriptionEvents.Transcript,
-            lambda x, result, **kwargs: self.on_message(result),
-        )
-        self.dg_connection.start(options)
+            self.dg_connection.on(
+                LiveTranscriptionEvents.Transcript,
+                lambda x, result, **kwargs: self.on_message(result),
+            )
+            self.dg_connection.start(options)
 
     def _reset_transcription(self):
         self.audio_data = []
@@ -505,7 +506,7 @@ class ResponseAgent:
             latency=t_styletts - t_normalize,
         )
 
-    def on_message(self, result):
+    def on_deepgram_message(self, result):
         transcript = result.channel.alternatives[0].transcript
         if transcript:
             self.transcript = transcript
