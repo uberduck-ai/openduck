@@ -11,7 +11,7 @@ from litellm import acompletion
 from sqlalchemy import select
 import numpy as np
 import httpx
-from deepgram import DeepgramClient, PrerecordedOptions, FileSource
+from deepgram import DeepgramClient, LiveTranscriptionEvents, LiveOptions
 from scipy.io.wavfile import write
 
 from openduck_py.settings import (
@@ -20,8 +20,8 @@ from openduck_py.settings import (
     CHAT_MODEL_GPT4,
     LOG_TO_SLACK,
     ML_API_URL,
-    ASR_METHOD,
     DEEPGRAM_API_SECRET,
+    ASR_METHOD,
 )
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import AsyncSession, SessionAsync
@@ -31,13 +31,10 @@ from openduck_py.logging.db import log_event
 from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.utils.third_party_tts import (
     aio_elevenlabs_tts,
-    ELEVENLABS_VIKRAM,
-    ELEVENLABS_CHRIS,
 )
 
 
-if ASR_METHOD == "deepgram":
-    deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
+deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
 
 
 async def _completion_with_retry(chat_model, messages):
@@ -237,7 +234,7 @@ class ResponseAgent:
             remote_path=f"recordings/{session_id}.wav",
         )
         self.vad = SileroVad()
-        # self.vad.init()
+        self.transcript = ""
         self.record = record
         self.time_of_last_activity = time()
         self.response_task: Optional[asyncio.Task] = None
@@ -253,6 +250,26 @@ class ResponseAgent:
         self.tts_config = tts_config
 
         self._time_of_last_record = None
+
+        if ASR_METHOD == "deepgram":
+            self.dg_connection = deepgram.listen.live.v("1")
+            options = LiveOptions(
+                model="nova-2",
+                punctuate=True,
+                language="en-US",
+                encoding="linear16",
+                channels=1,
+                sample_rate=WS_SAMPLE_RATE,
+                interim_results=True,
+                utterance_end_ms="1000",
+                vad_events=True,
+            )
+
+            self.dg_connection.on(
+                LiveTranscriptionEvents.Transcript,
+                lambda x, result, **kwargs: self.on_message(result),
+            )
+            self.dg_connection.start(options)
 
     def _reset_transcription(self):
         self.audio_data = []
@@ -271,6 +288,10 @@ class ResponseAgent:
         self.is_responding = False
 
     async def receive_audio(self, message: bytes):
+
+        if ASR_METHOD == "deepgram":
+            self.dg_connection.send(message)
+
         # Convert the input audio from input_audio_format to float32
         # Silero VAD and Whisper require float32
         if self.input_audio_format == "float32":
@@ -292,6 +313,7 @@ class ResponseAgent:
                 print("TOOOOO SLOW: ", time() - self._time_of_last_record)
             self._time_of_last_record = time()
             self.recorder.append(audio_16k_np)
+
         i = 0
         while i < len(audio_16k_np):
             upper = i + self.vad.window_size
@@ -386,10 +408,7 @@ class ResponseAgent:
         chat.history_json["messages"] = messages
         await db.commit()
 
-    async def start_response(
-        self,
-        audio_data: List[np.ndarray],
-    ):
+    async def start_response(self, audio_data: List[np.ndarray]):
         audio_data = np.concatenate(audio_data)
         self.is_responding = True
         try:
@@ -399,7 +418,11 @@ class ResponseAgent:
                 )
                 t_0 = time()
 
-                transcription = await _transcribe(audio_data)
+                transcription = (
+                    self.transcript
+                    if ASR_METHOD == "deepgram"
+                    else await _transcribe(audio_data)
+                )
                 print("TRANSCRIPTION: ", transcription, flush=True)
                 t_whisper = time()
                 await log_event(
@@ -409,7 +432,7 @@ class ResponseAgent:
                     meta={"text": transcription},
                     latency=t_whisper - t_0,
                 )
-                if not transcription or len(audio_data) < 100:
+                if not transcription:
                     return
 
                 system_prompt = {
@@ -483,3 +506,9 @@ class ResponseAgent:
             audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
             latency=t_styletts - t_normalize,
         )
+
+    def on_deepgram_message(self, result):
+        transcript = result.channel.alternatives[0].transcript
+        if transcript:
+            self.transcript = transcript
+        print("DEEPGRAM TRANSCRIPT: ", self.transcript, flush=True)
