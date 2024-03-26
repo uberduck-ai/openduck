@@ -267,7 +267,7 @@ class ResponseAgent:
 
             self.dg_connection.on(
                 LiveTranscriptionEvents.Transcript,
-                lambda x, result, **kwargs: self.on_message(result),
+                lambda x, result, **kwargs: self.on_deepgram_message(result),
             )
             self.dg_connection.start(options)
 
