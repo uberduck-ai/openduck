@@ -18,6 +18,7 @@ from daily import *
 from openduck_py.response_agent import ResponseAgent
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
+from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.prompts import prompt
 from openduck_py.settings import (
     CHAT_MODEL,
@@ -264,15 +265,22 @@ async def connect_daily(
     }
     if context is not None:
         base_context.update(context)
+    daily_recording_id = None
     if record:
         async with httpx.AsyncClient() as _http_client:
             room_id = room.split("/")[-1]
             print(f"Room ID: {room_id}")
-            _recording_response = await _http_client.post(
-                f"https://api.daily.co/v1/rooms/{room_id}/recordings/start",
-                headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
-            )
-            _recording_response.raise_for_status()
+            for attempt in range(3):
+                _recording_response = await _http_client.post(
+                    f"https://api.daily.co/v1/rooms/{room_id}/recordings/start",
+                    headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
+                )
+                if _recording_response.status_code == 404 and attempt < 2:
+                    await asyncio.sleep(0.1)  # Sleep for 100ms before retrying
+                else:
+                    _recording_response.raise_for_status()
+                    daily_recording_id = _recording_response.json()["recordingId"]
+                    break
             print(_recording_response.json())
 
     responder = ResponseAgent(
@@ -329,8 +337,46 @@ async def connect_daily(
         print("closing and logging to slack")
         responder.recorder.close_file()
         responder.recorder.log()
+        async with httpx.AsyncClient() as _http_client:
+            _recording_response = await _http_client.post(
+                f"https://api.daily.co/v1/rooms/{room_id}/recordings/stop",
+                headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
+            )
+            start_time = time()
+            recording_status = ""
+            while recording_status != "finished":
+                if time() - start_time > 10:
+                    print("Recording status not finished after 10 seconds.")
+                    break
+                await asyncio.sleep(0.5)
+                recording_status_response = await _http_client.get(
+                    f"https://api.daily.co/v1/recordings/{daily_recording_id}",
+                    headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
+                )
+                recording_status = recording_status_response.json().get("status")
+
+            if recording_status == "finished":
+                access_link_response = await _http_client.get(
+                    f"https://api.daily.co/v1/recordings/{daily_recording_id}/access-link",
+                    headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
+                )
+                file_url = access_link_response.json().get("download_link")
+                import tempfile
+                import aiofiles
+
+                resp = await _http_client.get(file_url)
+                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                    async with aiofiles.open(tmp_file.name, "wb") as out_file:
+                        await out_file.write(resp.content)
+                    downloaded_file_path = tmp_file.name
+                # Log to slack
+                log_audio_to_slack(downloaded_file_path)
+
         async with SessionAsync() as db:
             await log_event(db, session_id, "ended_session")
+    except Exception as e:
+        print("Error logging to slack:", e)
+
     finally:
         print("exiting the process")
         os._exit(0)
