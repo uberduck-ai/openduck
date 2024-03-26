@@ -435,10 +435,6 @@ class ResponseAgent:
                 if not transcription:
                     return
 
-                system_prompt = {
-                    "role": "system",
-                    "content": prompt(f"most-interesting-bot/{self.system_prompt}.md"),
-                }
                 await self._generate_and_speak(
                     db,
                     t_whisper,
