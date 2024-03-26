@@ -284,7 +284,11 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
           },
           body: JSON.stringify({
             context: {
-              local_time: new Date().toLocaleString(),
+              local_time: new Date().toLocaleTimeString([], {
+                hour12: false,
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
               name: userName,
               num_prev_conversations: 0,
               is_public: false,

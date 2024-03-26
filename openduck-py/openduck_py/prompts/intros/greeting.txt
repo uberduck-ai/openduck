@@ -16,7 +16,7 @@ Data:
     "name": "Sasha",
     "num_prev_conversations": 0,
     "is_public": True,
-    "topics": ["starts"]
+    "topics": ["startups"]
 }
 Ouput: Good morning Sasha, it's nice to meet you.
 ---
@@ -26,7 +26,7 @@ Data:
     "name": "",
     "num_prev_conversations": 1,
     "is_public": False,
-    "topics": ["starts"]
+    "topics": ["startups"]
 }
 Ouput: Hey there! Thanks for dialing in.
 ---

@@ -17,6 +17,7 @@ from scipy.io.wavfile import write
 from openduck_py.settings import (
     CHUNK_SIZE,
     WS_SAMPLE_RATE,
+    CHAT_MODEL,
     CHAT_MODEL_GPT4,
     LOG_TO_SLACK,
     ML_API_URL,
@@ -207,7 +208,7 @@ class WavAppender:
     def log(self):
         print("Logging audio to Slack", LOG_TO_SLACK, self.wav_file_path, flush=True)
         if LOG_TO_SLACK:
-            log_audio_to_slack(self.wav_file_path, self.remote_path)
+            log_audio_to_slack(self.wav_file_path)
 
 
 class ResponseAgent:
@@ -375,6 +376,11 @@ class ResponseAgent:
                 history_json={"messages": [system_prompt]},
             )
             db.add(chat)
+        else:
+            messages = chat.history_json["messages"]
+            if messages[0]["role"] == "system":
+                messages[0] = system_prompt
+            chat.history_json["messages"] = messages
         messages = chat.history_json["messages"]
         if new_message is not None:
             messages.append(new_message)
@@ -443,7 +449,7 @@ class ResponseAgent:
                     db,
                     t_whisper,
                     {"role": "user", "content": transcription},
-                    chat_model=CHAT_MODEL_GPT4,
+                    chat_model=CHAT_MODEL,
                 )
         finally:
             self.is_responding = False

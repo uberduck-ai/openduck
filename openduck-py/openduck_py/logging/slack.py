@@ -12,7 +12,7 @@ SLACK_LOGS_CHANNEL_ID = os.environ.get("SLACK_LOGS_CHANNEL")
 slack_client = WebClient(token=SLACK_BOT_TOKEN)
 
 
-def log_audio_to_slack(audio_path, remote_path):
+def log_audio_to_slack(audio_path):
     print("log_audio_to_slack", audio_path, LOGGING_BUCKET, SLACK_LOGS_CHANNEL_ID)
     assert os.path.exists(audio_path), f"{audio_path} does not exist"
 

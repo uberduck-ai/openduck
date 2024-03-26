@@ -18,13 +18,20 @@ from daily import *
 from openduck_py.response_agent import ResponseAgent
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
+from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.prompts import prompt
 from openduck_py.settings import (
     CHAT_MODEL,
     OUTPUT_SAMPLE_RATE,
     WS_SAMPLE_RATE,
 )
-from openduck_py.utils.daily import create_room, RoomCreateResponse, CustomEventHandler
+from openduck_py.utils.daily import (
+    create_room,
+    RoomCreateResponse,
+    CustomEventHandler,
+    start_recording,
+    stop_and_download_recording,
+)
 from openduck_py.utils.third_party_tts import (
     ELEVENLABS_VIKRAM,
     ELEVENLABS_CHRIS,
@@ -264,16 +271,7 @@ async def connect_daily(
     }
     if context is not None:
         base_context.update(context)
-    if record:
-        async with httpx.AsyncClient() as _http_client:
-            room_id = room.split("/")[-1]
-            print(f"Room ID: {room_id}")
-            _recording_response = await _http_client.post(
-                f"https://api.daily.co/v1/rooms/{room_id}/recordings/start",
-                headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
-            )
-            _recording_response.raise_for_status()
-            print(_recording_response.json())
+    daily_recording_id = await start_recording(room)
 
     responder = ResponseAgent(
         session_id=session_id,
@@ -329,8 +327,17 @@ async def connect_daily(
         print("closing and logging to slack")
         responder.recorder.close_file()
         responder.recorder.log()
+        room_id = room.split("/")[-1]
+        daily_recording_path = await stop_and_download_recording(
+            room_id, daily_recording_id
+        )
+        log_audio_to_slack(daily_recording_path)
+
         async with SessionAsync() as db:
             await log_event(db, session_id, "ended_session")
+    except Exception as e:
+        print("Error logging to slack:", e)
+
     finally:
         print("exiting the process")
         os._exit(0)
