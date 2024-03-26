@@ -376,6 +376,11 @@ class ResponseAgent:
                 history_json={"messages": [system_prompt]},
             )
             db.add(chat)
+        else:
+            messages = chat.history_json["messages"]
+            if messages[0]["role"] == "system":
+                messages[0] = system_prompt
+            chat.history_json["messages"] = messages
         messages = chat.history_json["messages"]
         if new_message is not None:
             messages.append(new_message)
