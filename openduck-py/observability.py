@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict
 from sqlalchemy.future import select
 from openduck_py.db import connection_string
-from openduck_py.models import DBChatRecord
+from openduck_py.models import DBChatRecord, DBChatHistory
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -55,13 +55,13 @@ def display_chat_interface(records, show_events: Dict[str, bool]):
                 st.write(f"Latency: {round(record.latency_seconds * 1000)} ms")
 
 
-stmt = (
-    select(DBChatRecord.session_id).distinct().order_by(DBChatRecord.timestamp.desc())
-)
-unique_session_ids = db.execute(stmt).all()
-session_id_options = [session_id[0] for session_id in unique_session_ids]
+stmt = select(DBChatHistory).order_by(DBChatHistory.created_at.desc())
+sessions = db.execute(stmt).scalars().all()
+session_id_options = [session for session in sessions]
 session_id_input = st.sidebar.selectbox(
-    "Select Session ID to display records:", session_id_options
+    "Select Dialog to display records:",
+    session_id_options,
+    format_func=lambda x: f"id: {x.id}; time: {x.created_at.isoformat()}; session_id: {x.session_id}",
 )
 
 unique_event_names = db.execute(select(DBChatRecord.event_name).distinct()).all()
@@ -73,5 +73,5 @@ for event in event_name_options:
     show_events[event] = st.sidebar.checkbox(event, value=value)
 
 if session_id_input:
-    records = get_chat_records(session_id_input)
+    records = get_chat_records(session_id_input.session_id)
     display_chat_interface(records, show_events)
