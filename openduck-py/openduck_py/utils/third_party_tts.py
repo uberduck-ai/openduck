@@ -1,8 +1,14 @@
+"""Synthesize speech with third-party TTS services.
+
+All functions in this module return an async generator that yields chunks 24khz pcm audio.
+"""
+
+import asyncio
 import os
 from typing import AsyncGenerator
 
 import httpx
-
+import azure.cognitiveservices.speech as azure_speechsdk
 import openai
 
 elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY")
@@ -15,7 +21,7 @@ def elevenlabs_tts():
 ELEVENLABS_VIKRAM = "gKhGpodmvg3JEngzD7eI"
 ELEVENLABS_CHRIS = "iP95p4xoKVk53GoZ742B"
 
-CHUNK_SIZE = 8096
+CHUNK_SIZE = 8192
 
 
 async def aio_elevenlabs_tts(
@@ -59,3 +65,38 @@ async def aio_openai_tts(
         result.raise_for_status()
         async for chunk in result.aiter_bytes(chunk_size=CHUNK_SIZE):
             yield chunk
+
+
+AZURE_ABEO = "en-NG-AbeoNeural"
+
+
+async def aio_azure_tts(
+    text: str,
+    voice_name: str = AZURE_ABEO,
+    chunk_size=CHUNK_SIZE,
+) -> AsyncGenerator[bytes, None]:
+    speech_config = azure_speechsdk.SpeechConfig(
+        subscription=os.environ["AZURE_SPEECH_KEY"], region="westus"
+    )
+    speech_config.speech_synthesis_voice_name = voice_name
+    speech_config.set_speech_synthesis_output_format(
+        azure_speechsdk.SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm
+    )
+
+    # Create an instance of a speech synthesizer using the default speaker as audio output.
+    synthesizer = azure_speechsdk.SpeechSynthesizer(
+        speech_config=speech_config, audio_config=None
+    )
+
+    def _start_speaking():
+        return synthesizer.start_speaking_text_async(text).get()
+
+    result = await asyncio.get_event_loop().run_in_executor(None, _start_speaking)
+    stream = azure_speechsdk.AudioDataStream(result)
+    audio_buffer = bytes(chunk_size)
+    total_size = 0
+    filled_size = stream.read_data(audio_buffer)
+    while filled_size > 0:
+        total_size += filled_size
+        yield bytes(bytearray(audio_buffer[:filled_size]))
+        filled_size = stream.read_data(audio_buffer)

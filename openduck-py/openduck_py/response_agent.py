@@ -31,6 +31,7 @@ from openduck_py.models import DBChatHistory
 from openduck_py.logging.db import log_event
 from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.utils.third_party_tts import (
+    aio_azure_tts,
     aio_elevenlabs_tts,
     aio_openai_tts,
 )
@@ -503,6 +504,8 @@ class ResponseAgent:
                 )
             elif self.tts_config.provider == "openai":
                 audio_bytes_iter = aio_openai_tts(response_text)
+            elif self.tts_config.provider == "azure":
+                audio_bytes_iter = aio_azure_tts(response_text)
 
         audio_chunk_bytes = bytes()
         _idx = 0
