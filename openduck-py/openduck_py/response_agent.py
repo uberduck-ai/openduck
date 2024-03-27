@@ -32,6 +32,7 @@ from openduck_py.logging.db import log_event
 from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.utils.third_party_tts import (
     aio_elevenlabs_tts,
+    aio_openai_tts,
 )
 
 
@@ -486,7 +487,7 @@ class ResponseAgent:
             )
 
             audio_bytes_iter = _inference(normalized)
-        elif self.tts_config.provider == "elevenlabs":
+        else:
             t_normalize = time()
             await log_event(
                 db,
@@ -495,9 +496,13 @@ class ResponseAgent:
                 meta={"text": response_text},
                 latency=t_normalize - t_chat,
             )
-            audio_bytes_iter = aio_elevenlabs_tts(
-                response_text, voice_id=self.tts_config.voice_id
-            )
+            print("NORMALIZE LATENCY: ", t_normalize - t_chat, flush=True)
+            if self.tts_config.provider == "elevenlabs":
+                audio_bytes_iter = aio_elevenlabs_tts(
+                    response_text, voice_id=self.tts_config.voice_id
+                )
+            elif self.tts_config.provider == "openai":
+                audio_bytes_iter = aio_openai_tts(response_text)
 
         audio_chunk_bytes = bytes()
         _idx = 0

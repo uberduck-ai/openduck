@@ -3,6 +3,8 @@ from typing import AsyncGenerator
 
 import httpx
 
+import openai
+
 elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY")
 
 
@@ -13,9 +15,11 @@ def elevenlabs_tts():
 ELEVENLABS_VIKRAM = "gKhGpodmvg3JEngzD7eI"
 ELEVENLABS_CHRIS = "iP95p4xoKVk53GoZ742B"
 
+CHUNK_SIZE = 8096
+
 
 async def aio_elevenlabs_tts(
-    text, voice_id="gKhGpodmvg3JEngzD7eI"
+    text, voice_id=ELEVENLABS_VIKRAM
 ) -> AsyncGenerator[bytes, None]:
     if elevenlabs_api_key is None:
         raise ValueError("ELEVENLABS_API_KEY is not set")
@@ -28,5 +32,30 @@ async def aio_elevenlabs_tts(
             json={"text": text},
         )
         result.raise_for_status()
-        async for chunk in result.aiter_bytes(chunk_size=16384):
+        async for chunk in result.aiter_bytes(chunk_size=CHUNK_SIZE):
+            yield chunk
+
+
+async def aio_openai_tts(
+    text, model="tts-1", voice="alloy"
+) -> AsyncGenerator[bytes, None]:
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    if openai_api_key is None:
+        raise ValueError("OPENAI_API_KEY is not set")
+    async with httpx.AsyncClient() as client:
+        result = await client.post(
+            "https://api.openai.com/v1/audio/speech",
+            headers={
+                "Authorization": f"Bearer {openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "input": text,
+                "voice": voice,
+                "response_format": "pcm",
+            },
+        )
+        result.raise_for_status()
+        async for chunk in result.aiter_bytes(chunk_size=CHUNK_SIZE):
             yield chunk
