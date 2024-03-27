@@ -63,4 +63,3 @@ async def log_event(
         latency_seconds=latency,
     )
     db.add(record)
-    await db.commit()
