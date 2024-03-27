@@ -298,7 +298,7 @@ async def connect_daily(
             ]
             await responder._generate_and_speak(
                 db,
-                t_whisper=time(),
+                t_asr=time(),
                 new_message=None,
                 system_prompt=prompt(
                     "intros/greeting.txt",

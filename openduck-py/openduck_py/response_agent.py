@@ -350,11 +350,12 @@ class ResponseAgent:
     async def _generate_and_speak(
         self,
         db: SessionAsync,
-        t_whisper=None,
+        t_asr=None,
         new_message=None,
         system_prompt=None,
         chat_model=CHAT_MODEL_GPT4,
     ):
+        t_previous = t_asr
         if system_prompt is None:
             system_prompt = prompt(
                 f"most-interesting-bot/{self.system_prompt}.md", self.context
@@ -402,7 +403,8 @@ class ResponseAgent:
             full_response += chunk_text
             # TODO: Smarter sentence detection - this will split sentences on cases like "Mr. Kennedy"
             if re.search(r"(?<!\d)[.!?](?!\d)", chunk_text):
-                await self.speak_response(complete_sentence, db, t_whisper)
+                await self.speak_response(complete_sentence, db, t_previous)
+                t_previous = time()
                 inprogress_messages = messages + [
                     {"role": "assistant", "content": full_response}
                 ]
@@ -430,13 +432,13 @@ class ResponseAgent:
                     else await _transcribe(audio_data)
                 )
                 print("TRANSCRIPTION: ", transcription, flush=True)
-                t_whisper = time()
+                t_asr = time()
                 await log_event(
                     db,
                     self.session_id,
                     "transcribed_audio",
                     meta={"text": transcription},
-                    latency=t_whisper - t_0,
+                    latency=t_asr - t_0,
                 )
                 if not transcription:
                     return
@@ -447,7 +449,7 @@ class ResponseAgent:
                 }
                 await self._generate_and_speak(
                     db,
-                    t_whisper,
+                    t_asr,
                     {"role": "user", "content": transcription},
                     chat_model=CHAT_MODEL,
                 )
@@ -497,20 +499,23 @@ class ResponseAgent:
                 response_text, voice_id=self.tts_config.voice_id
             )
 
-        t_styletts = time()
-
         audio_chunk_bytes = bytes()
+        _idx = 0
         async for chunk in audio_bytes_iter:
+            if _idx == 0:
+                # Measure time to first byte.
+                t_tts = time()
             if self.interrupt_event.is_set():
                 break
             await self.response_queue.put(chunk)
             audio_chunk_bytes += chunk
+            _idx += 1
         await log_event(
             db,
             self.session_id,
             "generated_tts",
             audio=np.frombuffer(audio_chunk_bytes, dtype=np.int16),
-            latency=t_styletts - t_normalize,
+            latency=t_tts - t_normalize,
         )
 
     def on_deepgram_message(self, result):
