@@ -68,11 +68,14 @@ async def aio_openai_tts(
 
 
 AZURE_ABEO = "en-NG-AbeoNeural"
+AZURE_ELLIOT = "en-GB-ElliotNeural"
+AZURE_MITCHELL = "en-NZ-MitchellNeural"
+AZURE_SARA = "en-US-SaraNeural"
 
 
 async def aio_azure_tts(
     text: str,
-    voice_name: str = AZURE_ABEO,
+    voice_name: str = AZURE_ELLIOT,
     chunk_size=CHUNK_SIZE,
 ) -> AsyncGenerator[bytes, None]:
     speech_config = azure_speechsdk.SpeechConfig(
