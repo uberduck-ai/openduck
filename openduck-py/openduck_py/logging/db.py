@@ -7,6 +7,7 @@ from time import time
 import numpy as np
 from scipy.io import wavfile
 import boto3
+import aioboto3
 
 from openduck_py.db import AsyncSession
 from openduck_py.models.chat_record import EventName, DBChatRecord
@@ -45,15 +46,24 @@ async def log_event(
 
         if LOG_TO_S3:
             # Use boto3's upload_file function in an executor
-            s3_client = boto3.client("s3")
-            await asyncio.get_running_loop().run_in_executor(
-                None,
-                s3_client.upload_file,
-                str(abs_path),
-                AUDIO_UPLOAD_BUCKET,
-                log_path,
-            )
-            print(f"Uploaded wavfile to s3://{AUDIO_UPLOAD_BUCKET}/{log_path}")
+            # s3_client = boto3.client("s3")
+
+            # await asyncio.get_running_loop().run_in_executor(
+            #     None,
+            #     s3_client.upload_file,
+            #     str(abs_path),
+            #     AUDIO_UPLOAD_BUCKET,
+            #     log_path,
+            # )
+
+            session = aioboto3.Session()
+            async with session.client("s3") as s3:
+                await s3.upload_file(
+                    Bucket=AUDIO_UPLOAD_BUCKET,
+                    Filename=str(abs_path),
+                    Key=log_path,
+                )
+                print(f"Uploaded wavfile to s3://{AUDIO_UPLOAD_BUCKET}/{log_path}")
 
         meta = {"audio_url": log_path}
     record = DBChatRecord(

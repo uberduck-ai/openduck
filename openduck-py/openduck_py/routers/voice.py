@@ -220,7 +220,7 @@ async def connect_daily(
     voice_id=None,
     speak_first=False,
     context: Optional[Dict[str, str]] = None,
-    record=True,
+    record=False,
 ):
     session_id = str(uuid4())
     mic = Daily.create_microphone_device(
@@ -314,7 +314,7 @@ async def connect_daily(
             print("left the call")
             break
 
-        message = speaker.read_frames(WS_SAMPLE_RATE // 10)
+        message = speaker.read_frames(WS_SAMPLE_RATE // 1)
         if len(message) > 0:
             asyncio.create_task(responder.receive_audio(message))
         await asyncio.sleep(0.01)

@@ -309,12 +309,13 @@ class ResponseAgent:
             audio_16k_np = audio_16k_np.astype(np.float32)
 
         self.audio_data.append(audio_16k_np)
-        if self.record:
-            if self._time_of_last_record is None:
-                self._time_of_last_record = time()
-            elif time() - self._time_of_last_record > 0.2:
-                print("TOOOOO SLOW: ", time() - self._time_of_last_record)
+        if self._time_of_last_record is None:
             self._time_of_last_record = time()
+        elif time() - self._time_of_last_record > 0.2:
+            print("TOOOOO SLOW: ", time() - self._time_of_last_record)
+        self._time_of_last_record = time()
+
+        if self.record:
             self.recorder.append(audio_16k_np)
 
         i = 0

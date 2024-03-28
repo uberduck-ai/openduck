@@ -17,7 +17,7 @@ AUDIO_UPLOAD_BUCKET = os.environ.get("AUDIO_UPLOAD_BUCKET", "openduck-us-west-2"
 LOG_TO_S3 = True
 
 ASRMethod = Literal["deepgram", "whisper"]
-ASR_METHOD: ASRMethod = "deepgram"
+ASR_METHOD: ASRMethod = "whisper"
 DEEPGRAM_API_SECRET = os.environ.get("DEEPGRAM_API_SECRET")
 
 # to not break existing env files
