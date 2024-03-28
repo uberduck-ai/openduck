@@ -12,7 +12,7 @@ from openduck_py.settings import OUTPUT_SAMPLE_RATE, IS_DEV
 
 ml_router = APIRouter(prefix="/ml")
 
-whisper_model = load_model("base.en")
+whisper_model = load_model("medium.en")
 
 # TODO (Matthew): Load the normalizer on IS_DEV but change the docker-compose to only reload the ML
 # service if this file is changed
@@ -44,6 +44,7 @@ async def transcribe_audio(
         audio_bytes = await audio.read()
         audio_data = np.frombuffer(audio_bytes, dtype=np.float32)
         transcription = whisper_model.transcribe(audio_data)["text"]
+        # TODO (Matthew): If the confidence is low, return the empty string
         return {"text": transcription}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

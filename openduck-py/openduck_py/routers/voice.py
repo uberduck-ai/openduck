@@ -18,6 +18,7 @@ from openduck_py.settings import (
     CHAT_MODEL,
     OUTPUT_SAMPLE_RATE,
     WS_SAMPLE_RATE,
+    IS_DEV,
 )
 from openduck_py.utils.daily import (
     create_room,
@@ -54,6 +55,8 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]):
             print("response task was cancelled")
         except Exception as e:
             print("response task raised an exception:", e)
+            if IS_DEV:
+                raise e
         else:
             print("response task completed successfully.")
 
