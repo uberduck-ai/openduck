@@ -268,18 +268,19 @@ async def connect_daily(
     }
     if context is not None:
         base_context.update(context)
-    daily_recording_id = await start_recording(room)
-
     responder = ResponseAgent(
         session_id=session_id,
         record=record,
         input_audio_format="int16",
-        # tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         tts_config=TTSConfig(provider="openai"),
+        # tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         # tts_config=TTSConfig(provider="azure"),
         system_prompt=system_prompt,
         context=base_context,
     )
+    responder.vad.init()
+    daily_recording_id = await start_recording(room)
+
     asyncio.create_task(
         daily_consumer(responder.response_queue, responder.interrupt_event, mic)
     )
@@ -309,7 +310,6 @@ async def connect_daily(
                 ),
                 chat_model=CHAT_MODEL,
             )
-    responder.vad.init()
     # NOTE(zach): The main loop of receiving audio and sending it to the agent.
     while True:
         _check_for_exceptions(responder.response_task)
