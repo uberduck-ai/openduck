@@ -16,3 +16,8 @@ services:
     env_file:
       - .env.dev
     runtime: nvidia
+  gpt-sovits:
+    image: docker.io/breakstring/gpt-sovits
+    command: python api.py
+    volumes:
+      - .:/openduck-py

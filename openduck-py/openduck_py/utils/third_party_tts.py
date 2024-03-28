@@ -1,3 +1,6 @@
+import io
+import librosa
+import numpy as np
 import os
 from typing import AsyncGenerator
 
@@ -30,3 +33,24 @@ async def aio_elevenlabs_tts(
         result.raise_for_status()
         async for chunk in result.aiter_bytes(chunk_size=16384):
             yield chunk
+
+
+async def aio_gptsovits_tts(
+    text, voice_ref
+) -> AsyncGenerator[bytes, None]:
+    result = httpx.get(
+        "http://openduck-gpt-sovits-1:9880",
+        params={
+            "refer_wav_path": voice_ref,
+            "prompt_text": "Abandon all aspirations for any kind of cohesive architecture,",
+            "prompt_language": "en",
+            "text": text,
+            "text_language": "en",
+        }
+    )
+    result.raise_for_status()
+    wav, _= librosa.load(io.BytesIO(result.content), sr=24000)
+    bytes = np.int16(wav * 32767).tobytes()
+    chunk_size = 16384
+    for chunk in [bytes[i:i+chunk_size] for i in range(0, len(bytes), chunk_size)]:
+        yield chunk
