@@ -31,8 +31,10 @@ from openduck_py.models import DBChatHistory
 from openduck_py.logging.db import log_event
 from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.utils.third_party_tts import (
+    aio_azure_tts,
     aio_elevenlabs_tts,
     aio_gptsovits_tts,
+    aio_openai_tts,
 )
 
 
@@ -48,7 +50,7 @@ async def _completion_with_retry(chat_model, messages):
             response = await acompletion(
                 chat_model,
                 messages,
-                temperature=1.2,
+                temperature=1.4,
                 stream=True,
             )
         except Exception:
@@ -499,7 +501,7 @@ class ResponseAgent:
             audio_bytes_iter = aio_gptsovits_tts(
                 normalized, voice_ref=self.tts_config.voice_id
             )
-        elif self.tts_config.provider == "elevenlabs":
+        else:
             t_normalize = time()
             await log_event(
                 db,
@@ -508,9 +510,15 @@ class ResponseAgent:
                 meta={"text": response_text},
                 latency=t_normalize - t_chat,
             )
-            audio_bytes_iter = aio_elevenlabs_tts(
-                response_text, voice_id=self.tts_config.voice_id
-            )
+            print("NORMALIZE LATENCY: ", t_normalize - t_chat, flush=True)
+            if self.tts_config.provider == "elevenlabs":
+                audio_bytes_iter = aio_elevenlabs_tts(
+                    response_text, voice_id=self.tts_config.voice_id
+                )
+            elif self.tts_config.provider == "openai":
+                audio_bytes_iter = aio_openai_tts(response_text)
+            elif self.tts_config.provider == "azure":
+                audio_bytes_iter = aio_azure_tts(response_text)
 
         audio_chunk_bytes = bytes()
         _idx = 0

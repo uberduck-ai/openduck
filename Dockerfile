@@ -4,6 +4,9 @@ WORKDIR /openduck-py
 
 COPY ./openduck-py/requirements.txt /openduck-py/requirements.txt
 
+RUN wget http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.0g-2ubuntu4_amd64.deb
+RUN dpkg -i libssl1.1_1.1.0g-2ubuntu4_amd64.deb
+
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y uvicorn gunicorn awscli espeak-ng && \

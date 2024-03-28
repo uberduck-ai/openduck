@@ -4,7 +4,6 @@ from typing import Literal
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text, Float
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.ext.mutable import MutableDict
-from sqlalchemy.orm import Mapped
 from openduck_py.db import Base
 
 EventName = Literal[

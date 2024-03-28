@@ -1,6 +1,7 @@
 aioboto3
 aiosqlite
 alembic
+azure-cognitiveservices-speech
 daily-python
 deepgram-sdk
 einops

@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-TTSProviders = Literal["styletts2", "gptsovits", "elevenlabs", "openai"]
+TTSProviders = Literal["styletts2", "gptsovits", "azure", "elevenlabs", "openai"]
 
 
 class TTSConfig:

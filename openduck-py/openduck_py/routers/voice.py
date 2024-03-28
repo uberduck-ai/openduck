@@ -1,18 +1,12 @@
 import asyncio
-import concurrent.futures
 import os
-import re
 import multiprocessing
 from time import time
 from typing import Optional, Dict
 import requests
 from uuid import uuid4
 
-import httpx
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
-import numpy as np
-from scipy.io import wavfile
-from sqlalchemy import select
 from daily import *
 
 from openduck_py.response_agent import ResponseAgent
@@ -24,6 +18,7 @@ from openduck_py.settings import (
     CHAT_MODEL,
     OUTPUT_SAMPLE_RATE,
     WS_SAMPLE_RATE,
+    IS_DEV,
 )
 from openduck_py.utils.daily import (
     create_room,
@@ -60,6 +55,8 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]):
             print("response task was cancelled")
         except Exception as e:
             print("response task raised an exception:", e)
+            if IS_DEV:
+                raise e
         else:
             print("response task completed successfully.")
 
@@ -277,7 +274,9 @@ async def connect_daily(
         session_id=session_id,
         record=record,
         input_audio_format="int16",
-        tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
+        # tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
+        tts_config=TTSConfig(provider="openai"),
+        # tts_config=TTSConfig(provider="azure"),
         system_prompt=system_prompt,
         context=base_context,
     )
