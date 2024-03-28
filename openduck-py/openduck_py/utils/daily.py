@@ -19,6 +19,7 @@ class RoomCreateResponse(BaseModel):
 
 async def start_recording(room_url: str) -> Optional[str]:
     daily_recording_id = None
+    NUM_ATTEMPTS = 10
     async with httpx.AsyncClient() as _http_client:
         room_id = room_url.split("/")[-1]
         print(f"Room ID: {room_id}")
@@ -27,7 +28,7 @@ async def start_recording(room_url: str) -> Optional[str]:
                 f"https://api.daily.co/v1/rooms/{room_id}/recordings/start",
                 headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
             )
-            if _recording_response.status_code == 404 and attempt < 2:
+            if _recording_response.status_code == 404 and attempt < NUM_ATTEMPTS:
                 await asyncio.sleep(0.1)  # Sleep for 100ms before retrying
             else:
                 _recording_response.raise_for_status()
