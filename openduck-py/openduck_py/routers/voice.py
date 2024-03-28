@@ -272,8 +272,8 @@ async def connect_daily(
         record=record,
         input_audio_format="int16",
         # tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
-        # tts_config=TTSConfig(provider="openai", voice_id=voice_id),
-        tts_config=TTSConfig(provider="azure"),
+        tts_config=TTSConfig(provider="openai"),
+        # tts_config=TTSConfig(provider="azure"),
         system_prompt=system_prompt,
         context=base_context,
     )
