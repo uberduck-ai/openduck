@@ -49,7 +49,7 @@ async def _completion_with_retry(chat_model, messages):
             response = await acompletion(
                 chat_model,
                 messages,
-                temperature=1.2,
+                temperature=1.4,
                 stream=True,
             )
         except Exception:
