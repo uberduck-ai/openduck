@@ -110,7 +110,7 @@ from pydantic import BaseModel
 
 class StartCallRequest(BaseModel):
     context: dict
-    prompt: Literal["podcast", "comedy"] = "podcast"
+    prompt: Literal["podcast", "comedy", "todo"] = "podcast"
 
 
 @audio_router.post("/start")

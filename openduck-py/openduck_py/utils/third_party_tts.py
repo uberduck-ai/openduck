@@ -29,16 +29,17 @@ CHUNK_SIZE = 8192
 
 
 async def aio_gptsovits_tts(text, voice_ref) -> AsyncGenerator[bytes, None]:
-    result = httpx.get(
-        GPT_SOVITS_API_URL,
-        params={
-            "refer_wav_path": voice_ref,
-            "prompt_text": "Abandon all aspirations for any kind of cohesive architecture,",
-            "prompt_language": "en",
-            "text": text,
-            "text_language": "en",
-        },
-    )
+    async with httpx.AsyncClient() as client:
+        result = await client.get(
+            GPT_SOVITS_API_URL,
+            params={
+                "refer_wav_path": voice_ref,
+                "prompt_text": "Abandon all aspirations for any kind of cohesive architecture,",
+                "prompt_language": "en",
+                "text": text,
+                "text_language": "en",
+            },
+        )
     result.raise_for_status()
     wav, _ = librosa.load(io.BytesIO(result.content), sr=24000)
     bytes = np.int16(wav * 32767).tobytes()
