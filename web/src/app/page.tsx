@@ -442,7 +442,7 @@ export default function Home() {
           <ul className="list-disc pl-5 space-y-2">
             <li className="text-sm">
               <span className="font-semibold">Create authentic content:</span>{" "}
-              Just have a conversation. We'll turn it into video content.
+              Just have a conversation. We&apos;ll turn it into video content.
             </li>
             <li className="text-sm">
               <span className="font-semibold">Think out loud:</span> Talk
