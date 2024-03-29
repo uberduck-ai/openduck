@@ -128,7 +128,7 @@ class SileroVad:
     # Default window size in examples at https://github.com/snakers4/silero-vad/wiki/Examples-and-Dependencies#examples
     window_size = 512
 
-    def init(self):
+    def init(self) -> None:
         # Lazy import torch so that it doesn't slow down creating a new Daily room for the user
         import torch
 
@@ -359,9 +359,7 @@ class ResponseAgent:
     ):
         t_previous = t_asr
         if system_prompt is None:
-            system_prompt = prompt(
-                f"most-interesting-bot/{self.system_prompt}", self.context
-            )
+            system_prompt = prompt(self.system_prompt, self.context)
         system_prompt = {
             "role": "system",
             "content": system_prompt,
@@ -447,7 +445,7 @@ class ResponseAgent:
 
                 system_prompt = {
                     "role": "system",
-                    "content": prompt(f"most-interesting-bot/{self.system_prompt}"),
+                    "content": prompt(self.system_prompt),
                 }
                 await self._generate_and_speak(
                     db,

@@ -181,6 +181,33 @@ function Spinner({ color = "text-black" }) {
   );
 }
 
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  label: string;
+  options: { value: string; label: string }[];
+  id: string;
+}
+
+const Select = ({ label, options, id, ...rest }: SelectProps) => {
+  return (
+    <div className="w-full">
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+        {label}
+      </label>
+      <select
+        id={id}
+        {...rest}
+        className="mt-1 p-2 rounded-lg border-2 border-gray-300 block w-full"
+      >
+        {options.map((option, index) => (
+          <option key={index} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant: "success" | "danger" | "primary" | "secondary";
   children: React.ReactNode;
@@ -286,8 +313,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const meetingState = useMeetingState();
   const [isJoining, setIsJoining] = useState(false);
   const { currentMic, microphones, setMicrophone } = useDevices();
-
-  console.log(currentMic, microphones);
+  const [conversationType, setConversationType] = useState("podcast");
 
   const toggleMic = () => {
     callObject?.setLocalAudio(!callObject?.localAudio());
@@ -299,7 +325,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
     setJoinedRoom(false);
   }, [callObject]);
 
-  const handleOrbClick = useCallback(async () => {
+  const handleJoinClick = useCallback(async () => {
     console.log("hi", joinedRoom);
     if (joinedRoom) {
       leaveCall();
@@ -312,12 +338,14 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            prompt: conversationType,
             context: {
               local_time: new Date().toLocaleTimeString([], {
                 hour12: false,
                 hour: "2-digit",
                 minute: "2-digit",
               }),
+              local_date: new Date().toLocaleDateString(),
               name: userName,
               num_prev_conversations: 0,
               is_public: false,
@@ -347,51 +375,47 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         setIsJoining(false);
       }
     }
-  }, [callObject, roomUrl, userName, joinedRoom]);
+  }, [callObject, roomUrl, userName, joinedRoom, conversationType]);
 
   return (
-    <div className="flex flex-col items-center space-y-4 p-4">
-      {/*<input
-        type="text"
-        placeholder="Your Name"
-        value={userName}
-        onChange={(e) => setUserName(e.target.value)}
-        className="text-center p-2 rounded-lg border-2 border-gray-300 mb-4"
-        disabled={joinedRoom}
-      />*/}
+    <div className="flex flex-col items-center space-y-4 p-4 w-full md:w-96">
       <button
         className={`orb-button w-48 h-48 bg-blue-500 enabled:hover:bg-blue-600 text-white rounded-full p-4 shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${
           isJoining && "opacity-50 cursor-not-allowed"
         }`}
-        onClick={handleOrbClick}
+        onClick={handleJoinClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
-        // disabled={!userName}
         disabled={isJoining}
       >
         <div>{isJoining && <Spinner color="text-white" />}</div>
         <div>{joinedRoom ? "Leave Room" : "Try It!"}</div>
       </button>
+
+      <Select
+        label="Conversation Type"
+        value={conversationType}
+        options={[
+          {
+            value: "podcast",
+            label: "Business Podcast - For content creation",
+          },
+          { value: "todo", label: "TODO List - For organizing thoughts" },
+          { value: "comedy", label: "Joking around - Just for fun" },
+        ]}
+        onChange={(e) => setConversationType(e.target.value)}
+        id="conversation-type"
+      />
       {currentMic && (
-        <div>
-          <label
-            htmlFor="microphone-select"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Select Microphone
-          </label>
-          <select
-            id="microphone-select"
-            onChange={(e) => setMicrophone(e.target.value)}
-            className="mt-1 p-2 rounded-lg border-2 border-gray-300 block w-full"
-          >
-            {microphones.map((mic, index) => (
-              <option key={index} value={mic.device.deviceId}>
-                {mic.device.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          label="Select Microphone"
+          options={microphones.map((mic) => ({
+            value: mic.device.deviceId,
+            label: mic.device.label,
+          }))}
+          id="microphone-select"
+          onChange={(e) => setMicrophone(e.target.value)}
+        />
       )}
       {roomUrl && false && <div className="text-sm">Room URL: {roomUrl}</div>}
       <div>

@@ -2,7 +2,7 @@ import asyncio
 import os
 import multiprocessing
 from time import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Literal
 import requests
 from uuid import uuid4
 
@@ -106,10 +106,17 @@ async def websocket_consumer(queue: asyncio.Queue, websocket: WebSocket):
             queue.task_done()
 
 
+from pydantic import BaseModel
+
+
+class StartCallRequest(BaseModel):
+    context: dict
+    prompt: Literal["podcast", "comedy"] = "podcast"
+
+
 @audio_router.post("/start")
-async def create_room_and_start(request: Request):
-    request_data = await request.json()
-    context = request_data.get("context", {})
+async def create_room_and_start(request: StartCallRequest):
+    context = request.context
 
     room_info = await create_room()
     print("created room")
@@ -119,7 +126,7 @@ async def create_room_and_start(request: Request):
         kwargs=dict(
             room_url=room_info["url"],
             username="Vikram (AI)",
-            prompt="podcast_host.txt",
+            prompt=f"{request.prompt}.txt",
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
             context=context,
@@ -148,7 +155,7 @@ async def create_room_and_start_podcast():
         kwargs=dict(
             room_url=room_info["url"],
             username="Vikram (AI)",
-            prompt="podcast_host.txt",
+            prompt="podcast.txt",
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
         ),
@@ -301,7 +308,7 @@ async def connect_daily(
                 t_asr=time(),
                 new_message=None,
                 system_prompt=prompt(
-                    "intros/greeting.txt",
+                    system_prompt,
                     dict(
                         responder.context,
                         my_name=my_name,
