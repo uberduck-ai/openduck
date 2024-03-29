@@ -486,19 +486,6 @@ class ResponseAgent:
                 latency=t_normalize - t_chat,
             )
             audio_bytes_iter = _inference(normalized)
-        elif self.tts_config.provider == "gptsovits":
-            normalized = await _normalize_text(response_text)
-            t_normalize = time()
-            await log_event(
-                db,
-                self.session_id,
-                "normalized_text",
-                meta={"text": normalized},
-                latency=t_normalize - t_chat,
-            )
-            audio_bytes_iter = aio_gptsovits_tts(
-                normalized, voice_ref=self.tts_config.voice_id
-            )
         else:
             t_normalize = time()
             await log_event(
@@ -517,6 +504,10 @@ class ResponseAgent:
                 audio_bytes_iter = aio_openai_tts(response_text)
             elif self.tts_config.provider == "azure":
                 audio_bytes_iter = aio_azure_tts(response_text)
+            elif self.tts_config.provider == "gptsovits":
+                audio_bytes_iter = aio_gptsovits_tts(
+                    response_text, voice_ref=self.tts_config.voice_id
+                )
 
         audio_chunk_bytes = bytes()
         _idx = 0
