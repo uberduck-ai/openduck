@@ -13,12 +13,38 @@ import {
   useVideoTrack,
   useParticipantProperty,
   useCallObject,
+  useDevices,
 } from "@daily-co/daily-react";
-import DailyIframe, { DailyCall } from "@daily-co/daily-js";
+import { DailyCall } from "@daily-co/daily-js";
 
 const apiHost = process.env.NEXT_PUBLIC_API_URL;
 
 console.log("API HOST: ", apiHost);
+
+function Switch({
+  enabled,
+  setEnabled,
+}: {
+  enabled: boolean;
+  setEnabled: (enabled: boolean) => void;
+}) {
+  const toggleSwitch = () => setEnabled(!enabled);
+
+  return (
+    <button
+      onClick={toggleSwitch}
+      className={`${
+        enabled ? "bg-green-400" : "bg-gray-200"
+      } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+    >
+      <span
+        className={`${
+          enabled ? "translate-x-6" : "translate-x-1"
+        } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}
+      />
+    </button>
+  );
+}
 
 const refreshPage = () => {
   console.log(
@@ -259,6 +285,9 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const [userName, setUserName] = useState<string>("");
   const meetingState = useMeetingState();
   const [isJoining, setIsJoining] = useState(false);
+  const { currentMic, microphones, setMicrophone } = useDevices();
+
+  console.log(currentMic, microphones);
 
   const toggleMic = () => {
     callObject?.setLocalAudio(!callObject?.localAudio());
@@ -341,8 +370,29 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         disabled={isJoining}
       >
         <div>{isJoining && <Spinner color="text-white" />}</div>
-        <div>{joinedRoom ? "Leave Room" : "Start"}</div>
+        <div>{joinedRoom ? "Leave Room" : "Try It!"}</div>
       </button>
+      {currentMic && (
+        <div>
+          <label
+            htmlFor="microphone-select"
+            className="block text-sm font-medium text-gray-700"
+          >
+            Select Microphone
+          </label>
+          <select
+            id="microphone-select"
+            onChange={(e) => setMicrophone(e.target.value)}
+            className="mt-1 p-2 rounded-lg border-2 border-gray-300 block w-full"
+          >
+            {microphones.map((mic, index) => (
+              <option key={index} value={mic.device.deviceId}>
+                {mic.device.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {roomUrl && false && <div className="text-sm">Room URL: {roomUrl}</div>}
       <div>
         <Call toggleMic={toggleMic} micOn={micOn} />
@@ -358,10 +408,31 @@ export default function Home() {
     <DailyProvider callObject={callObject}>
       <main className="min-h-screen bg-gray-50 flex flex-col items-center">
         <h1 className="text-2xl font-bold text-center mt-8 mb-4 mx-4">
-          Voice chat with AI and humans.
+          Recorded, shareable voice chats with AI.
         </h1>
-        <div className="flex-grow flex items-start">
+        <div className="flex items-start">
           <AudioCall callObject={callObject} />
+        </div>
+        <div className="text-left mt-4 sm:mt-4 ml-2 mr-2">
+          <h2 className="text-lg font-bold mb-4">Why?</h2>
+          <ul className="list-disc pl-5 space-y-2">
+            <li className="text-sm">
+              <span className="font-semibold">Create authentic content:</span>{" "}
+              Just have a conversation. We'll turn it into video content.
+            </li>
+            <li className="text-sm">
+              <span className="font-semibold">Think out loud:</span> Talk
+              Through your thoughts, daily TODO list, or ideas.
+            </li>
+            <li className="text-sm">
+              <span className="font-semibold">Experiment with AI:</span>{" "}
+              Understanding AI better by interacting with it over voice.
+            </li>
+            <li className="text-sm">
+              <span className="font-semibold">Just have fun:</span> Say absurd
+              things. Share the results.
+            </li>
+          </ul>
         </div>
       </main>
     </DailyProvider>
