@@ -64,7 +64,6 @@ def _check_for_exceptions(response_task: Optional[asyncio.Task]):
 async def daily_consumer(
     queue: asyncio.Queue, interrupt: asyncio.Event, mic: VirtualMicrophoneDevice
 ):
-
     buffer_estimate = 0
     buffer_estimate_t0 = None
 

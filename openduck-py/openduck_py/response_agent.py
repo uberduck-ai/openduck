@@ -42,7 +42,6 @@ deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
 
 
 async def _completion_with_retry(chat_model, messages):
-
     # NOTE(zach): retries
     response = None
     for _retry in range(3):
@@ -292,7 +291,6 @@ class ResponseAgent:
         self.is_responding = False
 
     async def receive_audio(self, message: bytes):
-
         if ASR_METHOD == "deepgram":
             self.dg_connection.send(message)
 
