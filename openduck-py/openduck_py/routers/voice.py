@@ -119,7 +119,7 @@ async def create_room_and_start(request: Request):
         kwargs=dict(
             room_url=room_info["url"],
             username="Vikram (AI)",
-            prompt="podcast_host",
+            prompt="podcast_host.txt",
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
             context=context,
@@ -148,7 +148,7 @@ async def create_room_and_start_podcast():
         kwargs=dict(
             room_url=room_info["url"],
             username="Vikram (AI)",
-            prompt="podcast_host",
+            prompt="podcast_host.txt",
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
         ),
