@@ -33,6 +33,7 @@ from openduck_py.logging.slack import log_audio_to_slack
 from openduck_py.utils.third_party_tts import (
     aio_azure_tts,
     aio_elevenlabs_tts,
+    aio_gptsovits_tts,
     aio_openai_tts,
 )
 
@@ -41,7 +42,6 @@ deepgram = DeepgramClient(DEEPGRAM_API_SECRET)
 
 
 async def _completion_with_retry(chat_model, messages):
-
     # NOTE(zach): retries
     response = None
     for _retry in range(3):
@@ -291,7 +291,6 @@ class ResponseAgent:
         self.is_responding = False
 
     async def receive_audio(self, message: bytes):
-
         if ASR_METHOD == "deepgram":
             self.dg_connection.send(message)
 
@@ -476,7 +475,7 @@ class ResponseAgent:
             print("Echo detected, not sending response.")
             return
 
-        if self.tts_config.provider == "local":
+        if self.tts_config.provider == "styletts2":
             normalized = await _normalize_text(response_text)
             t_normalize = time()
             await log_event(
@@ -486,7 +485,6 @@ class ResponseAgent:
                 meta={"text": normalized},
                 latency=t_normalize - t_chat,
             )
-
             audio_bytes_iter = _inference(normalized)
         else:
             t_normalize = time()
@@ -506,6 +504,10 @@ class ResponseAgent:
                 audio_bytes_iter = aio_openai_tts(response_text)
             elif self.tts_config.provider == "azure":
                 audio_bytes_iter = aio_azure_tts(response_text)
+            elif self.tts_config.provider == "gptsovits":
+                audio_bytes_iter = aio_gptsovits_tts(
+                    response_text, voice_ref=self.tts_config.voice_id
+                )
 
         audio_chunk_bytes = bytes()
         _idx = 0

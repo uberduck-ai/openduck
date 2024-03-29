@@ -1,11 +1,15 @@
 from typing import Literal, Optional
 
-TTSProviders = Literal["local", "azure", "elevenlabs", "openai"]
+TTSProviders = Literal["styletts2", "gptsovits", "azure", "elevenlabs", "openai"]
 
 
 class TTSConfig:
     def __init__(
-        self, provider: TTSProviders = "local", voice_id: Optional[str] = None
+        self,
+        provider: TTSProviders = "gptsovits",
+        voice_id: Optional[
+            str
+        ] = "/openduck-py/openduck-py/models/styletts2/cartoon-boy-upbeat.wav",
     ):
         self.provider = provider
         self.voice_id = voice_id

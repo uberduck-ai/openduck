@@ -15,7 +15,6 @@ stop_event = threading.Event()
 
 
 class PyAudioApp:
-
     def __init__(self):
         self.__app_quit = False
 

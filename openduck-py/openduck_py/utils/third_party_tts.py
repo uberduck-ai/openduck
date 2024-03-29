@@ -4,6 +4,9 @@ All functions in this module return an async generator that yields chunks 24khz 
 """
 
 import asyncio
+import io
+import librosa
+import numpy as np
 import os
 from typing import AsyncGenerator
 
@@ -12,6 +15,7 @@ import azure.cognitiveservices.speech as azure_speechsdk
 import openai
 
 elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY")
+GPT_SOVITS_API_URL = os.environ.get("GPT_SOVITS_API_URL")
 
 
 def elevenlabs_tts():
@@ -22,6 +26,25 @@ ELEVENLABS_VIKRAM = "gKhGpodmvg3JEngzD7eI"
 ELEVENLABS_CHRIS = "iP95p4xoKVk53GoZ742B"
 
 CHUNK_SIZE = 8192
+
+
+async def aio_gptsovits_tts(text, voice_ref) -> AsyncGenerator[bytes, None]:
+    result = httpx.get(
+        GPT_SOVITS_API_URL,
+        params={
+            "refer_wav_path": voice_ref,
+            "prompt_text": "Abandon all aspirations for any kind of cohesive architecture,",
+            "prompt_language": "en",
+            "text": text,
+            "text_language": "en",
+        },
+    )
+    result.raise_for_status()
+    wav, _ = librosa.load(io.BytesIO(result.content), sr=24000)
+    bytes = np.int16(wav * 32767).tobytes()
+    chunk_size = 16384
+    for chunk in [bytes[i : i + chunk_size] for i in range(0, len(bytes), chunk_size)]:
+        yield chunk
 
 
 async def aio_elevenlabs_tts(
