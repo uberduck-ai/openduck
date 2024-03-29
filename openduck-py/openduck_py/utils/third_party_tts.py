@@ -15,6 +15,7 @@ import azure.cognitiveservices.speech as azure_speechsdk
 import openai
 
 elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY")
+GPT_SOVITS_API_URL = os.environ.get("GPT_SOVITS_API_URL")
 
 
 def elevenlabs_tts():
@@ -29,7 +30,7 @@ CHUNK_SIZE = 8192
 
 async def aio_gptsovits_tts(text, voice_ref) -> AsyncGenerator[bytes, None]:
     result = httpx.get(
-        "http://openduck-gpt-sovits-1:9880",
+        GPT_SOVITS_API_URL,
         params={
             "refer_wav_path": voice_ref,
             "prompt_text": "Abandon all aspirations for any kind of cohesive architecture,",

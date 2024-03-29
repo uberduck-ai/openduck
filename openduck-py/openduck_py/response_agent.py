@@ -486,7 +486,7 @@ class ResponseAgent:
                 latency=t_normalize - t_chat,
             )
             audio_bytes_iter = _inference(normalized)
-        elif self.tts_config.provider == "":
+        elif self.tts_config.provider == "gptsovits":
             normalized = await _normalize_text(response_text)
             t_normalize = time()
             await log_event(
