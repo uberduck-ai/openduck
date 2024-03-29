@@ -20,6 +20,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:3001",
         "https://openduck.vercel.app",
         "https://openduck.ai",
         "https://b898bccd7757.ngrok.app",

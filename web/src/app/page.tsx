@@ -13,12 +13,38 @@ import {
   useVideoTrack,
   useParticipantProperty,
   useCallObject,
+  useDevices,
 } from "@daily-co/daily-react";
-import DailyIframe, { DailyCall } from "@daily-co/daily-js";
+import { DailyCall } from "@daily-co/daily-js";
 
 const apiHost = process.env.NEXT_PUBLIC_API_URL;
 
 console.log("API HOST: ", apiHost);
+
+function Switch({
+  enabled,
+  setEnabled,
+}: {
+  enabled: boolean;
+  setEnabled: (enabled: boolean) => void;
+}) {
+  const toggleSwitch = () => setEnabled(!enabled);
+
+  return (
+    <button
+      onClick={toggleSwitch}
+      className={`${
+        enabled ? "bg-green-400" : "bg-gray-200"
+      } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+    >
+      <span
+        className={`${
+          enabled ? "translate-x-6" : "translate-x-1"
+        } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}
+      />
+    </button>
+  );
+}
 
 const refreshPage = () => {
   console.log(
@@ -155,6 +181,33 @@ function Spinner({ color = "text-black" }) {
   );
 }
 
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  label: string;
+  options: { value: string; label: string }[];
+  id: string;
+}
+
+const Select = ({ label, options, id, ...rest }: SelectProps) => {
+  return (
+    <div className="w-full">
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+        {label}
+      </label>
+      <select
+        id={id}
+        {...rest}
+        className="mt-1 p-2 rounded-lg border-2 border-gray-300 block w-full"
+      >
+        {options.map((option, index) => (
+          <option key={index} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant: "success" | "danger" | "primary" | "secondary";
   children: React.ReactNode;
@@ -259,6 +312,8 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const [userName, setUserName] = useState<string>("");
   const meetingState = useMeetingState();
   const [isJoining, setIsJoining] = useState(false);
+  const { currentMic, microphones, setMicrophone } = useDevices();
+  const [conversationType, setConversationType] = useState("podcast");
 
   const toggleMic = () => {
     callObject?.setLocalAudio(!callObject?.localAudio());
@@ -270,7 +325,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
     setJoinedRoom(false);
   }, [callObject]);
 
-  const handleOrbClick = useCallback(async () => {
+  const handleJoinClick = useCallback(async () => {
     console.log("hi", joinedRoom);
     if (joinedRoom) {
       leaveCall();
@@ -283,12 +338,14 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            prompt: conversationType,
             context: {
               local_time: new Date().toLocaleTimeString([], {
                 hour12: false,
                 hour: "2-digit",
                 minute: "2-digit",
               }),
+              local_date: new Date().toLocaleDateString(),
               name: userName,
               num_prev_conversations: 0,
               is_public: false,
@@ -318,31 +375,48 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         setIsJoining(false);
       }
     }
-  }, [callObject, roomUrl, userName, joinedRoom]);
+  }, [callObject, roomUrl, userName, joinedRoom, conversationType]);
 
   return (
-    <div className="flex flex-col items-center space-y-4 p-4">
-      {/*<input
-        type="text"
-        placeholder="Your Name"
-        value={userName}
-        onChange={(e) => setUserName(e.target.value)}
-        className="text-center p-2 rounded-lg border-2 border-gray-300 mb-4"
-        disabled={joinedRoom}
-      />*/}
+    <div className="flex flex-col items-center space-y-4 p-4 w-full md:w-96">
       <button
         className={`orb-button w-48 h-48 bg-blue-500 enabled:hover:bg-blue-600 text-white rounded-full p-4 shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${
           isJoining && "opacity-50 cursor-not-allowed"
         }`}
-        onClick={handleOrbClick}
+        onClick={handleJoinClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
-        // disabled={!userName}
         disabled={isJoining}
       >
         <div>{isJoining && <Spinner color="text-white" />}</div>
-        <div>{joinedRoom ? "Leave Room" : "Start"}</div>
+        <div>{joinedRoom ? "Leave Room" : "Try It!"}</div>
       </button>
+
+      <Select
+        label="Conversation Type"
+        value={conversationType}
+        options={[
+          {
+            value: "podcast",
+            label: "Business Podcast - For content creation",
+          },
+          { value: "todo", label: "TODO List - For organizing thoughts" },
+          { value: "comedy", label: "Joking around - Just for fun" },
+        ]}
+        onChange={(e) => setConversationType(e.target.value)}
+        id="conversation-type"
+      />
+      {currentMic && (
+        <Select
+          label="Select Microphone"
+          options={microphones.map((mic) => ({
+            value: mic.device.deviceId,
+            label: mic.device.label,
+          }))}
+          id="microphone-select"
+          onChange={(e) => setMicrophone(e.target.value)}
+        />
+      )}
       {roomUrl && false && <div className="text-sm">Room URL: {roomUrl}</div>}
       <div>
         <Call toggleMic={toggleMic} micOn={micOn} />
@@ -358,10 +432,31 @@ export default function Home() {
     <DailyProvider callObject={callObject}>
       <main className="min-h-screen bg-gray-50 flex flex-col items-center">
         <h1 className="text-2xl font-bold text-center mt-8 mb-4 mx-4">
-          Voice chat with AI and humans.
+          Recorded, shareable voice chats with AI.
         </h1>
-        <div className="flex-grow flex items-start">
+        <div className="flex items-start">
           <AudioCall callObject={callObject} />
+        </div>
+        <div className="text-left mt-4 sm:mt-4 ml-2 mr-2">
+          <h2 className="text-lg font-bold mb-4">Why?</h2>
+          <ul className="list-disc pl-5 space-y-2">
+            <li className="text-sm">
+              <span className="font-semibold">Create authentic content:</span>{" "}
+              Just have a conversation. We&apos;ll turn it into video content.
+            </li>
+            <li className="text-sm">
+              <span className="font-semibold">Think out loud:</span> Talk
+              Through your thoughts, daily TODO list, or ideas.
+            </li>
+            <li className="text-sm">
+              <span className="font-semibold">Experiment with AI:</span>{" "}
+              Understanding AI better by interacting with it over voice.
+            </li>
+            <li className="text-sm">
+              <span className="font-semibold">Just have fun:</span> Say absurd
+              things. Share the results.
+            </li>
+          </ul>
         </div>
       </main>
     </DailyProvider>
