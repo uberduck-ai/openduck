@@ -10,12 +10,14 @@ ML_API_URL = os.environ["ML_API_URL"]
 # Set to 1024 for the esp32, but larger CHUNK_SIZE is needed to prevent choppiness with the local client
 CHUNK_SIZE = 10240
 LOG_TO_SLACK = bool(os.environ.get("LOG_TO_SLACK", False))
-# CHAT_MODEL = "azure/gpt-35-turbo-deployment"
-CHAT_MODEL = "azure/gpt-4-deployment"
-CHAT_MODEL_GPT4 = "azure/gpt-4-deployment"
-CHAT_MODEL_GROQ = "groq/mixtral-8x7b-32768"
+TEMPERATURE = 1.2
+
+ChatModels = Literal[
+    "azure/gpt-35-turbo-deployment", "azure/gpt-4-deployment", "groq/mixtral-8x7b-32768"
+]
+CHAT_MODEL = "azure/gpt-35-turbo-deployment"
 AUDIO_UPLOAD_BUCKET = os.environ.get("AUDIO_UPLOAD_BUCKET", "openduck-us-west-2")
-LOG_TO_S3 = True
+LOG_TO_S3 = False
 
 ASRMethod = Literal["deepgram", "whisper"]
 ASR_METHOD: ASRMethod = "whisper"
