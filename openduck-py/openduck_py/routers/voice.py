@@ -341,7 +341,8 @@ async def connect_daily(
         daily_recording_path = await stop_and_download_recording(
             room_id, daily_recording_id
         )
-        log_audio_to_slack(daily_recording_path)
+        print(f"logged audio to slack: {daily_recording_path}")
+        # log_audio_to_slack(daily_recording_path)
 
         async with SessionAsync() as db:
             await log_event(db, session_id, "ended_session")

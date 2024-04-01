@@ -1,12 +1,17 @@
 import asyncio
 import os
 import time
-import sys
 from typing import Optional
+import aiofiles
+import tempfile
 
 from daily import EventHandler, CallClient
 import httpx
 from pydantic import BaseModel
+
+from openduck_py.utils.s3 import upload_to_s3_bucket
+from openduck_py.settings import RECORDING_UPLOAD_BUCKET
+from openduck_py.db import DBChatRecording
 
 DAILY_API_KEY = os.environ.get("DAILY_API_KEY")
 
@@ -62,14 +67,26 @@ async def stop_and_download_recording(room_id: str, recording_id: str) -> str:
                 headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
             )
             file_url = access_link_response.json().get("download_link")
-            import tempfile
-            import aiofiles
 
             resp = await _http_client.get(file_url)
             with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
                 async with aiofiles.open(tmp_file.name, "wb") as out_file:
                     await out_file.write(resp.content)
                 downloaded_file_path = tmp_file.name
+
+        # Open the downloaded file and upload it to the specified S3 bucket
+        async with aiofiles.open(downloaded_file_path, "rb") as file_to_upload:
+            s3_filename = f"recordings/{room_id}/{recording_id}.mp4"
+            await upload_to_s3_bucket(
+                file_to_upload, RECORDING_UPLOAD_BUCKET, s3_filename
+            )
+            print(f"Uploaded recording to s3://{RECORDING_UPLOAD_BUCKET}/{s3_filename}")
+
+        # DBChatRecording.create(
+        #     chat_session_id=room_id,
+        #     url=f"s3://{RECORDING_UPLOAD_BUCKET}/{s3_filename}",
+        # )
+
         return downloaded_file_path
 
 
