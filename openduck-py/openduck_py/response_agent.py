@@ -18,11 +18,11 @@ from openduck_py.settings import (
     CHUNK_SIZE,
     WS_SAMPLE_RATE,
     CHAT_MODEL,
-    CHAT_MODEL_GPT4,
     LOG_TO_SLACK,
     ML_API_URL,
     DEEPGRAM_API_SECRET,
     ASR_METHOD,
+    TEMPERATURE,
 )
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import AsyncSession, SessionAsync
@@ -49,7 +49,7 @@ async def _completion_with_retry(chat_model, messages):
             response = await acompletion(
                 chat_model,
                 messages,
-                temperature=1.4,
+                temperature=TEMPERATURE,
                 stream=True,
             )
         except Exception:
@@ -354,7 +354,7 @@ class ResponseAgent:
         t_asr=None,
         new_message=None,
         system_prompt=None,
-        chat_model=CHAT_MODEL_GPT4,
+        chat_model=CHAT_MODEL,
     ):
         t_previous = t_asr
         if system_prompt is None:

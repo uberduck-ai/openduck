@@ -21,31 +21,6 @@ const apiHost = process.env.NEXT_PUBLIC_API_URL;
 
 console.log("API HOST: ", apiHost);
 
-function Switch({
-  enabled,
-  setEnabled,
-}: {
-  enabled: boolean;
-  setEnabled: (enabled: boolean) => void;
-}) {
-  const toggleSwitch = () => setEnabled(!enabled);
-
-  return (
-    <button
-      onClick={toggleSwitch}
-      className={`${
-        enabled ? "bg-green-400" : "bg-gray-200"
-      } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
-    >
-      <span
-        className={`${
-          enabled ? "translate-x-6" : "translate-x-1"
-        } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}
-      />
-    </button>
-  );
-}
-
 const refreshPage = () => {
   console.log(
     "make sure to allow access to your microphone and camera in your browser's permissions"
@@ -428,6 +403,13 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
 
 export default function Home() {
   const callObject = useCallObject({});
+  callObject?.updateInputSettings({
+    audio: {
+      processor: {
+        type: "noise-cancellation",
+      },
+    },
+  });
   return (
     <DailyProvider callObject={callObject}>
       <main className="min-h-screen bg-gray-50 flex flex-col items-center">

@@ -265,9 +265,10 @@ async def connect_daily(
                     "isEnabled": True,
                     "settings": {"deviceId": "my-speaker"},
                 },
-            }
+            },
         },
     )
+
     my_name = username.split(" (AI)")[0]
     base_context = {
         "my_name": my_name,
