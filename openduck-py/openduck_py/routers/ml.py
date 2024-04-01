@@ -8,7 +8,7 @@ import numpy as np
 from nemo_text_processing.text_normalization.normalize import Normalizer
 
 from openduck_py.voices.styletts2 import styletts2_inference
-from openduck_py.settings import OUTPUT_SAMPLE_RATE, IS_DEV
+from openduck_py.settings import OUTPUT_SAMPLE_RATE, IS_DEV, NO_SPEECH_PROB_THRESHOLD
 
 ml_router = APIRouter(prefix="/ml")
 
@@ -43,8 +43,12 @@ async def transcribe_audio(
     try:
         audio_bytes = await audio.read()
         audio_data = np.frombuffer(audio_bytes, dtype=np.float32)
-        transcription = whisper_model.transcribe(audio_data)["text"]
-        # TODO (Matthew): If the confidence is low, return the empty string
+        response = whisper_model.transcribe(audio_data)
+        no_speech_prob = response["segments"][0]["no_speech_prob"]
+        print("No speech prob:", no_speech_prob)
+        transcription = response["text"]
+        if no_speech_prob > NO_SPEECH_PROB_THRESHOLD:
+            transcription = ""
         return {"text": transcription}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
