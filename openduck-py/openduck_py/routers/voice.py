@@ -129,6 +129,7 @@ async def create_room_and_start(request: StartCallRequest):
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
             context=context,
+            room_id=room_info["room_id"],
         ),
     )
     process.start()
@@ -140,6 +141,7 @@ async def create_room_and_start(request: StartCallRequest):
         url=room_info["url"],
         name=room_info["name"],
         privacy=room_info["privacy"],
+        room_id=room_info["room_id"],
     )
 
 
@@ -226,12 +228,14 @@ async def connect_daily(
     room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
     username: str = "host (AI)",
     system_prompt="system-prompt",
-    voice_id=None,
-    speak_first=False,
+    voice_id: str = None,
+    speak_first: bool = False,
     context: Optional[Dict[str, str]] = None,
-    record=True,
+    record: bool = True,
+    room_id: str = None,
 ):
-    session_id = str(uuid4())
+    # NOTE(wrl): we are setting the session id to the uuid of the daily created room
+    session_id = room_id or str(uuid4())
     mic = Daily.create_microphone_device(
         "my-mic",
         sample_rate=OUTPUT_SAMPLE_RATE,
@@ -354,8 +358,9 @@ def run_connect_daily(
     username: str,
     prompt: str,
     voice_id: Optional[str] = None,
-    speak_first=False,
+    speak_first: bool = False,
     context: Optional[Dict[str, str]] = None,
+    room_id: str = None,
 ):
     asyncio.run(
         connect_daily(
@@ -365,6 +370,7 @@ def run_connect_daily(
             voice_id=voice_id,
             speak_first=speak_first,
             context=context,
+            room_id=room_id,
         )
     )
 

@@ -21,6 +21,29 @@ const apiHost = process.env.NEXT_PUBLIC_API_URL;
 
 console.log("API HOST: ", apiHost);
 
+function Switch({
+  enabled,
+  setEnabled,
+}: {
+  enabled: boolean;
+  setEnabled: (enabled: boolean) => void;
+}) {
+  const toggleSwitch = () => setEnabled(!enabled);
+
+  return (
+    <button
+      onClick={toggleSwitch}
+      className={`${enabled ? "bg-green-400" : "bg-gray-200"
+        } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+    >
+      <span
+        className={`${enabled ? "translate-x-6" : "translate-x-1"
+          } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}
+      />
+    </button>
+  );
+}
+
 const refreshPage = () => {
   console.log(
     "make sure to allow access to your microphone and camera in your browser's permissions"
@@ -38,7 +61,7 @@ function UserMediaError() {
         <button
           onClick={refreshPage}
           type="button"
-          className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          className="mt-4 px-4 py-2 bg-red-500 text-black rounded hover:bg-red-600"
         >
           Try again
         </button>
@@ -282,6 +305,7 @@ function Call({ toggleMic, micOn }: { toggleMic: () => void; micOn: boolean }) {
 
 const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const [roomUrl, setRoomUrl] = useState<string>("");
+  const [roomId, setRoomId] = useState<string>("");
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [userName, setUserName] = useState<string>("");
@@ -298,6 +322,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const leaveCall = useCallback(async () => {
     await callObject?.leave();
     setJoinedRoom(false);
+    // get the video url from 
   }, [callObject]);
 
   const handleJoinClick = useCallback(async () => {
@@ -332,6 +357,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         if (room.url) {
           console.log("Room created and joining:", room.url);
           setRoomUrl(room.url);
+          setRoomId(room.id);
           try {
             await callObject?.join({ url: room.url, userName: userName });
           } catch (error) {
@@ -355,9 +381,8 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   return (
     <div className="flex flex-col items-center space-y-4 p-4 w-full md:w-96">
       <button
-        className={`orb-button w-48 h-48 bg-blue-500 enabled:hover:bg-blue-600 text-white rounded-full p-4 shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${
-          isJoining && "opacity-50 cursor-not-allowed"
-        }`}
+        className={`orb-button w-48 h-48 bg-blue-500 enabled:hover:bg-blue-600 text-white rounded-full p-4 shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${isJoining && "opacity-50 cursor-not-allowed"
+          }`}
         onClick={handleJoinClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
@@ -412,7 +437,7 @@ export default function Home() {
   });
   return (
     <DailyProvider callObject={callObject}>
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center">
+      <main className="min-h-screen bg-gray-50 flex flex-col items-center text-black">
         <h1 className="text-2xl font-bold text-center mt-8 mb-4 mx-4">
           Recorded, shareable voice chats with AI.
         </h1>
