@@ -1,10 +1,11 @@
+from pprint import pprint
+import io
+
+import numpy as np
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import io
-
 from whisper import load_model
-import numpy as np
 from nemo_text_processing.text_normalization.normalize import Normalizer
 
 from openduck_py.voices.styletts2 import styletts2_inference
@@ -44,13 +45,17 @@ async def transcribe_audio(
         audio_bytes = await audio.read()
         audio_data = np.frombuffer(audio_bytes, dtype=np.float32)
         response = whisper_model.transcribe(audio_data)
+        pprint(response)
         if len(response["segments"]) == 0:
             return {"text": ""}
-        no_speech_prob = response["segments"][0]["no_speech_prob"]
-        print("No speech prob:", no_speech_prob)
-        transcription = response["text"]
-        if no_speech_prob > NO_SPEECH_PROB_THRESHOLD:
-            transcription = ""
+
+        transcription = " ".join(
+            [
+                segment["text"]
+                for segment in response["segments"]
+                if segment["no_speech_prob"] <= NO_SPEECH_PROB_THRESHOLD
+            ]
+        )
         return {"text": transcription}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
