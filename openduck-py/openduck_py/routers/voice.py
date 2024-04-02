@@ -6,7 +6,7 @@ from typing import Optional, Dict, Literal
 import requests
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from daily import *
 from fastapi import HTTPException
 from sqlalchemy.future import select
@@ -123,7 +123,6 @@ async def create_room_and_start(request: StartCallRequest):
     room_info = await create_room()
 
     print("created room")
-    print(f"\n\n room info: {room_info} \n\n")
 
     process = multiprocessing.Process(
         target=run_connect_daily,
@@ -239,9 +238,7 @@ async def connect_daily(
     record: bool = True,
     room_id: str = None,
 ):
-    # NOTE(wrl): we are setting the session id to the uuid of the daily created room
-    session_id = room_id or str(uuid4())
-    print(f"\n\n\n\nStarting session with session_id: {session_id}\n\n\n\n")
+    session_id = room_id
     mic = Daily.create_microphone_device(
         "my-mic",
         sample_rate=OUTPUT_SAMPLE_RATE,
@@ -351,7 +348,7 @@ async def connect_daily(
             room_name, daily_recording_id, room_id
         )
         print(f"logged audio to slack: {daily_recording_path}")
-        # log_audio_to_slack(daily_recording_path)
+        log_audio_to_slack(daily_recording_path)
 
         async with SessionAsync() as db:
             await log_event(db, session_id, "ended_session")

@@ -48,10 +48,6 @@ async def start_recording(room_url: str) -> Optional[str]:
 async def stop_and_download_recording(
     room_name: str, recording_id: str, room_id: str
 ) -> str:
-    print(
-        f"\n\n Stopping and downloading recording\n\troom_name: {room_name}, recording_id: {recording_id}, room_id: {room_id}\n\n",
-        flush=True,
-    )
     async with httpx.AsyncClient() as _http_client:
         _recording_response = await _http_client.post(
             f"https://api.daily.co/v1/rooms/{room_name}/recordings/stop",
@@ -86,15 +82,7 @@ async def stop_and_download_recording(
         # Open the downloaded file and upload it to the specified S3 bucket
         async with aiofiles.open(downloaded_file_path, "rb") as file_to_upload:
             s3_path = f"recordings/{room_id}/{recording_id}.mp4"
-            print(
-                f"\n\n\n\nUploading to s3://{RECORDING_UPLOAD_BUCKET}/{s3_path}\n\n\n\n",
-                flush=True,
-            )
             await upload_to_s3_bucket(file_to_upload, RECORDING_UPLOAD_BUCKET, s3_path)
-            print(
-                f"Uploaded recording to s3://{RECORDING_UPLOAD_BUCKET}/{s3_path}",
-                flush=True,
-            )
 
         s3_url = (
             f"https://{RECORDING_UPLOAD_BUCKET}.s3.us-west-2.amazonaws.com/{s3_path}"
@@ -106,7 +94,6 @@ async def stop_and_download_recording(
                 .values(recording_url=s3_url)
             )
             await db.commit()
-        print(f"\n\n\n\nRecording URL: {s3_url}\n\n\n\n", flush=True)
         return downloaded_file_path
 
 
