@@ -8,11 +8,14 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
 from daily import *
+from fastapi import HTTPException
+from sqlalchemy.future import select
 
 from openduck_py.response_agent import ResponseAgent
 from openduck_py.configs.tts_config import TTSConfig
 from openduck_py.db import get_db_async, AsyncSession, SessionAsync
 from openduck_py.logging.slack import log_audio_to_slack
+from openduck_py.models import DBChatHistory
 from openduck_py.prompts import prompt
 from openduck_py.settings import (
     CHAT_MODEL,
@@ -118,7 +121,9 @@ async def create_room_and_start(request: StartCallRequest):
     context = request.context
 
     room_info = await create_room()
+
     print("created room")
+    print(f"\n\n room info: {room_info} \n\n")
 
     process = multiprocessing.Process(
         target=run_connect_daily,
@@ -129,7 +134,7 @@ async def create_room_and_start(request: StartCallRequest):
             voice_id=ELEVENLABS_VIKRAM,
             speak_first=True,
             context=context,
-            room_id=room_info["room_id"],
+            room_id=room_info["id"],
         ),
     )
     process.start()
@@ -141,7 +146,7 @@ async def create_room_and_start(request: StartCallRequest):
         url=room_info["url"],
         name=room_info["name"],
         privacy=room_info["privacy"],
-        room_id=room_info["room_id"],
+        id=room_info["id"],
     )
 
 
@@ -236,6 +241,7 @@ async def connect_daily(
 ):
     # NOTE(wrl): we are setting the session id to the uuid of the daily created room
     session_id = room_id or str(uuid4())
+    print(f"\n\n\n\nStarting session with session_id: {session_id}\n\n\n\n")
     mic = Daily.create_microphone_device(
         "my-mic",
         sample_rate=OUTPUT_SAMPLE_RATE,
@@ -336,10 +342,13 @@ async def connect_daily(
     try:
         print("closing and logging to slack")
         responder.recorder.close_file()
+        print("closed file")
         responder.recorder.log()
-        room_id = room.split("/")[-1]
+        print("logged")
+        room_name = room.split("/")[-1]
+        print("room_name: ", room_name)
         daily_recording_path = await stop_and_download_recording(
-            room_id, daily_recording_id
+            room_name, daily_recording_id, room_id
         )
         print(f"logged audio to slack: {daily_recording_path}")
         # log_audio_to_slack(daily_recording_path)
@@ -374,6 +383,20 @@ def run_connect_daily(
             room_id=room_id,
         )
     )
+
+
+@audio_router.get("/recordings/{session_id}")
+async def get_recording_url(session_id: str, db: AsyncSession = Depends(get_db_async)):
+    try:
+        query = select(DBChatHistory).where(DBChatHistory.session_id == session_id)
+        result = await db.execute(query)
+        chat_history = result.scalar_one_or_none()
+        if chat_history:
+            return {"recordingUrl": chat_history.recording_url}
+        else:
+            raise HTTPException(status_code=404, detail="Recording not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

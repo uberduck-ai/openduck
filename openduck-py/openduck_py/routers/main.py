@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from openduck_py.routers.voice import audio_router
-from openduck_py.routers.rooms import router as rooms_router
+from openduck_py.routers.daily import router as daily_router
 from openduck_py.routers.ml import ml_router
 from openduck_py.settings import IS_DEV
 
@@ -31,7 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(audio_router)
-app.include_router(rooms_router)
+app.include_router(daily_router)
 app.include_router(ml_router)
 
 

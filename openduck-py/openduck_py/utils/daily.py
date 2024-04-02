@@ -8,10 +8,12 @@ import tempfile
 from daily import EventHandler, CallClient
 import httpx
 from pydantic import BaseModel
+from sqlalchemy.sql import update
 
 from openduck_py.utils.s3 import upload_to_s3_bucket
 from openduck_py.settings import RECORDING_UPLOAD_BUCKET
-from openduck_py.db import DBChatRecording
+from openduck_py.db import SessionAsync
+from openduck_py.models import DBChatHistory
 
 DAILY_API_KEY = os.environ.get("DAILY_API_KEY")
 
@@ -20,17 +22,18 @@ class RoomCreateResponse(BaseModel):
     url: str
     name: str
     privacy: str
+    id: str
 
 
 async def start_recording(room_url: str) -> Optional[str]:
     daily_recording_id = None
     NUM_ATTEMPTS = 10
     async with httpx.AsyncClient() as _http_client:
-        room_id = room_url.split("/")[-1]
-        print(f"Room ID: {room_id}")
+        room_name = room_url.split("/")[-1]
+        print(f"Room name: {room_name}")
         for attempt in range(3):
             _recording_response = await _http_client.post(
-                f"https://api.daily.co/v1/rooms/{room_id}/recordings/start",
+                f"https://api.daily.co/v1/rooms/{room_name}/recordings/start",
                 headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
             )
             if _recording_response.status_code == 404 and attempt < NUM_ATTEMPTS:
@@ -42,10 +45,16 @@ async def start_recording(room_url: str) -> Optional[str]:
     return daily_recording_id
 
 
-async def stop_and_download_recording(room_id: str, recording_id: str) -> str:
+async def stop_and_download_recording(
+    room_name: str, recording_id: str, room_id: str
+) -> str:
+    print(
+        f"\n\n Stopping and downloading recording\n\troom_name: {room_name}, recording_id: {recording_id}, room_id: {room_id}\n\n",
+        flush=True,
+    )
     async with httpx.AsyncClient() as _http_client:
         _recording_response = await _http_client.post(
-            f"https://api.daily.co/v1/rooms/{room_id}/recordings/stop",
+            f"https://api.daily.co/v1/rooms/{room_name}/recordings/stop",
             headers={"Authorization": f"Bearer {os.environ['DAILY_API_KEY']}"},
         )
         start_time = time.time()
@@ -76,17 +85,28 @@ async def stop_and_download_recording(room_id: str, recording_id: str) -> str:
 
         # Open the downloaded file and upload it to the specified S3 bucket
         async with aiofiles.open(downloaded_file_path, "rb") as file_to_upload:
-            s3_filename = f"recordings/{room_id}/{recording_id}.mp4"
-            await upload_to_s3_bucket(
-                file_to_upload, RECORDING_UPLOAD_BUCKET, s3_filename
+            s3_path = f"recordings/{room_id}/{recording_id}.mp4"
+            print(
+                f"\n\n\n\nUploading to s3://{RECORDING_UPLOAD_BUCKET}/{s3_path}\n\n\n\n",
+                flush=True,
             )
-            print(f"Uploaded recording to s3://{RECORDING_UPLOAD_BUCKET}/{s3_filename}")
+            await upload_to_s3_bucket(file_to_upload, RECORDING_UPLOAD_BUCKET, s3_path)
+            print(
+                f"Uploaded recording to s3://{RECORDING_UPLOAD_BUCKET}/{s3_path}",
+                flush=True,
+            )
 
-        # DBChatRecording.create(
-        #     chat_session_id=room_id,
-        #     url=f"s3://{RECORDING_UPLOAD_BUCKET}/{s3_filename}",
-        # )
-
+        s3_url = (
+            f"https://{RECORDING_UPLOAD_BUCKET}.s3.us-west-2.amazonaws.com/{s3_path}"
+        )
+        async with SessionAsync() as db:
+            await db.execute(
+                update(DBChatHistory)
+                .where(DBChatHistory.session_id == room_id)
+                .values(recording_url=s3_url)
+            )
+            await db.commit()
+        print(f"\n\n\n\nRecording URL: {s3_url}\n\n\n\n", flush=True)
         return downloaded_file_path
 
 
