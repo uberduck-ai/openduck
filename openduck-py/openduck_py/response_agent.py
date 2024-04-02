@@ -340,12 +340,12 @@ class ResponseAgent:
                         print("start of speech detected.")
                         self.time_of_last_activity = time()
                         await log_event(db, self.session_id, "detected_start_of_speech")
-                        if self.response_task and not self.response_task.done():
-                            if self.is_responding:
-                                await log_event(
-                                    db, self.session_id, "interrupted_response"
-                                )
-                                await self.interrupt(self.response_task)
+                        # if self.response_task and not self.response_task.done():
+                        #     if self.is_responding:
+                        #         await log_event(
+                        #             db, self.session_id, "interrupted_response"
+                        #         )
+                        #         await self.interrupt(self.response_task)
             i = upper
 
     async def _generate_and_speak(
@@ -417,7 +417,6 @@ class ResponseAgent:
 
     async def start_response(self, audio_data: List[np.ndarray]):
         audio_data = np.concatenate(audio_data)
-        self.is_responding = True
         try:
             async with SessionAsync() as db:
                 await log_event(
@@ -431,6 +430,13 @@ class ResponseAgent:
                     else await _transcribe(audio_data)
                 )
                 print("TRANSCRIPTION: ", transcription, flush=True)
+
+                if transcription and self.is_responding:
+                    await log_event(db, self.session_id, "interrupted_response")
+                    await self.interrupt(self.response_task)
+
+                self.is_responding = True
+
                 t_asr = time()
                 await log_event(
                     db,
@@ -442,10 +448,6 @@ class ResponseAgent:
                 if not transcription:
                     return
 
-                system_prompt = {
-                    "role": "system",
-                    "content": prompt(self.system_prompt),
-                }
                 await self._generate_and_speak(
                     db,
                     t_asr,
