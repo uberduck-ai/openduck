@@ -120,7 +120,6 @@ async def create_room_and_start(request: StartCallRequest):
     context = request.context
 
     room_info = await create_room()
-
     print("created room")
 
     process = multiprocessing.Process(

@@ -3,7 +3,6 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-
 from openduck_py.utils.daily import create_room
 
 
