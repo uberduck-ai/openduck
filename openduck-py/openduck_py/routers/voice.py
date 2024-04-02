@@ -339,11 +339,8 @@ async def connect_daily(
     try:
         print("closing and logging to slack")
         responder.recorder.close_file()
-        print("closed file")
         responder.recorder.log()
-        print("logged")
         room_name = room.split("/")[-1]
-        print("room_name: ", room_name)
         daily_recording_path = await stop_and_download_recording(
             room_name, daily_recording_id, room_id
         )
