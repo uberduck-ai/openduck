@@ -44,6 +44,8 @@ async def transcribe_audio(
         audio_bytes = await audio.read()
         audio_data = np.frombuffer(audio_bytes, dtype=np.float32)
         response = whisper_model.transcribe(audio_data)
+        if len(response["segments"]) == 0:
+            return {"text": ""}
         no_speech_prob = response["segments"][0]["no_speech_prob"]
         print("No speech prob:", no_speech_prob)
         transcription = response["text"]
