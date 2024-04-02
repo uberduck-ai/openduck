@@ -17,6 +17,7 @@ class DBChatHistory(Base):
     session_id = Column(Text, nullable=False, index=True)
     history_json = Column(MutableDict.as_mutable(JSON))
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    recording_url = Column(Text, nullable=True)
 
 
 chat_histories = DBChatHistory.__table__

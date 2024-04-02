@@ -38,7 +38,7 @@ function UserMediaError() {
         <button
           onClick={refreshPage}
           type="button"
-          className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          className="mt-4 px-4 py-2 bg-red-500 text-black rounded hover:bg-red-600"
         >
           Try again
         </button>
@@ -280,8 +280,13 @@ function Call({ toggleMic, micOn }: { toggleMic: () => void; micOn: boolean }) {
   return getUserMediaError ? <UserMediaError /> : renderCallScreen();
 }
 
-const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
-  const [roomUrl, setRoomUrl] = useState<string>("");
+const AudioCall = ({
+  callObject,
+  setRecordingUrl,
+}: {
+  callObject: DailyCall | null;
+  setRecordingUrl: (url: string) => void;
+}) => {
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [userName, setUserName] = useState<string>("");
@@ -289,6 +294,10 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const [isJoining, setIsJoining] = useState(false);
   const { currentMic, microphones, setMicrophone } = useDevices();
   const [conversationType, setConversationType] = useState("podcast");
+  const [roomUrl, setRoomUrl] = useState<string>("");
+  const [roomId, setRoomId] = useState<string>("");
+
+  console.log("Room id here: ", roomId);
 
   const toggleMic = () => {
     callObject?.setLocalAudio(!callObject?.localAudio());
@@ -298,8 +307,43 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   const leaveCall = useCallback(async () => {
     await callObject?.leave();
     setJoinedRoom(false);
-  }, [callObject]);
+    console.log("Left room");
+    console.log("room id", roomId);
 
+    const fetchRecordingUrl = async () => {
+      let response;
+      let attempts = 0;
+      while (true) {
+        try {
+          response = await fetch(`${apiHost}/audio/recordings/${roomId}`, {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+            },
+          });
+          const recordingUrlResponse = await response.json();
+          if (response.ok && recordingUrlResponse.recordingUrl) {
+            setRecordingUrl(recordingUrlResponse.recordingUrl);
+            break;
+          } else {
+            throw new Error("Network response was not ok");
+          }
+        } catch (error) {
+          console.error("Failed to fetch recording:", error);
+          attempts++;
+          if (attempts >= 20) {
+            console.error(
+              "Max attempts reached. Stopping fetch for recording URL."
+            );
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for 1 second before retrying
+        }
+      }
+    };
+
+    fetchRecordingUrl();
+  }, [callObject, roomId]);
   const handleJoinClick = useCallback(async () => {
     console.log("hi", joinedRoom);
     if (joinedRoom) {
@@ -332,6 +376,7 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
         if (room.url) {
           console.log("Room created and joining:", room.url);
           setRoomUrl(room.url);
+
           try {
             await callObject?.join({ url: room.url, userName: userName });
           } catch (error) {
@@ -344,6 +389,11 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
           console.error("Failed to create room");
           alert("couldn't join room");
         }
+        if (room.id) {
+          setRoomId(room.id);
+        } else {
+          console.error("Failed to get room ID");
+        }
       } catch (error) {
         console.error("Error creating room:", error);
       } finally {
@@ -353,11 +403,10 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   }, [callObject, roomUrl, userName, joinedRoom, conversationType]);
 
   return (
-    <div className="flex flex-col items-center space-y-4 p-4 w-full md:w-96">
+    <div className="flex flex-col items-center justify-center grow space-y-4 p-4 w-full md:w-96">
       <button
-        className={`orb-button w-48 h-48 bg-blue-500 enabled:hover:bg-blue-600 text-white rounded-full p-4 shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${
-          isJoining && "opacity-50 cursor-not-allowed"
-        }`}
+        className={`orb-button w-48 h-48 bg-blue-500 enabled:hover:bg-blue-600 text-white rounded-full p-4 shadow-lg transform transition-transform duration-300 ease-in-out flex items-center justify-center text-2xl ${isJoining && "opacity-50 cursor-not-allowed"
+          }`}
         onClick={handleJoinClick}
         onMouseOver={(e) => e.currentTarget.classList.add("hover:shadow-xl")}
         onMouseOut={(e) => e.currentTarget.classList.remove("hover:shadow-xl")}
@@ -401,8 +450,56 @@ const AudioCall = ({ callObject }: { callObject: DailyCall | null }) => {
   );
 };
 
+const InfoSection = () => {
+  return (
+    <div className="text-left mt-4 sm:mt-4 ml-2 mr-2 w-full">
+      <h2 className="text-lg font-bold mb-4">Why?</h2>
+      <ul className="list-disc pl-5 space-y-2">
+        <li className="text-sm">
+          <span className="font-semibold">Create authentic content:</span> Just
+          have a conversation. We&apos;ll turn it into video content.
+        </li>
+        <li className="text-sm">
+          <span className="font-semibold">Think out loud:</span> Talk Through
+          your thoughts, daily TODO list, or ideas.
+        </li>
+        <li className="text-sm">
+          <span className="font-semibold">Experiment with AI:</span>{" "}
+          Understanding AI better by interacting with it over voice.
+        </li>
+        <li className="text-sm">
+          <span className="font-semibold">Just have fun:</span> Say absurd
+          things. Share the results.
+        </li>
+      </ul>
+    </div>
+  );
+};
+
+const VideoSection = ({ videoUrl }: { videoUrl: string | null }) => {
+  return (
+    <div className="text-left mt-4 sm:mt-4 ml-2 mr-2 w-full">
+      <h2 className="text-lg font-bold mb-4">Your Video</h2>
+      <div className="flex flex-col">
+        {videoUrl ? (
+          <video
+            className="rounded-lg shadow-lg max-w-full max-h-96"
+            src={videoUrl}
+            controls
+            loop
+          />
+        ) : (
+          <div className="text-sm text-gray-500">Have a conversation to get your first recording</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
 export default function Home() {
   const callObject = useCallObject({});
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   callObject?.updateInputSettings({
     audio: {
       processor: {
@@ -412,33 +509,19 @@ export default function Home() {
   });
   return (
     <DailyProvider callObject={callObject}>
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center">
-        <h1 className="text-2xl font-bold text-center mt-8 mb-4 mx-4">
-          Recorded, shareable voice chats with AI.
-        </h1>
-        <div className="flex items-start">
-          <AudioCall callObject={callObject} />
-        </div>
-        <div className="text-left mt-4 sm:mt-4 ml-2 mr-2">
-          <h2 className="text-lg font-bold mb-4">Why?</h2>
-          <ul className="list-disc pl-5 space-y-2">
-            <li className="text-sm">
-              <span className="font-semibold">Create authentic content:</span>{" "}
-              Just have a conversation. We&apos;ll turn it into video content.
-            </li>
-            <li className="text-sm">
-              <span className="font-semibold">Think out loud:</span> Talk
-              Through your thoughts, daily TODO list, or ideas.
-            </li>
-            <li className="text-sm">
-              <span className="font-semibold">Experiment with AI:</span>{" "}
-              Understanding AI better by interacting with it over voice.
-            </li>
-            <li className="text-sm">
-              <span className="font-semibold">Just have fun:</span> Say absurd
-              things. Share the results.
-            </li>
-          </ul>
+      <main className="min-h-screen bg-gray-50 flex flex-col items-center text-black p-10">
+        <div className="max-w-xl">
+          <h1 className="text-2xl font-bold text-center mb-4 mx-4">
+            Recorded, shareable voice chats with AI.
+          </h1>
+          <div className="flex w-full">
+            <AudioCall
+              callObject={callObject}
+              setRecordingUrl={setRecordingUrl}
+            />
+          </div>
+          <InfoSection />
+          <VideoSection videoUrl={recordingUrl} />
         </div>
       </main>
     </DailyProvider>

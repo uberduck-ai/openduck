@@ -25,6 +25,11 @@ ChatModels = Literal[
 ]
 CHAT_MODEL = "azure/gpt-35-turbo-deployment"
 TEMPERATURE = 1.2
+AUDIO_UPLOAD_BUCKET = os.environ.get("AUDIO_UPLOAD_BUCKET", "openduck-us-west-2")
+RECORDING_UPLOAD_BUCKET = os.environ.get(
+    "RECORDING_UPLOAD_BUCKET", "openduck-us-west-2"
+)
+LOG_TO_S3 = True
 
 # ASR settings
 ASRMethod = Literal["deepgram", "whisper"]
