@@ -4,7 +4,6 @@ import multiprocessing
 from time import time
 from typing import Optional, Dict, Literal
 import requests
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from daily import *
