@@ -1,13 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 
-from openduck_py.db import get_db_async
 from openduck_py.utils.daily import create_room
 
 
@@ -17,14 +13,10 @@ class RoomCreateResponse(BaseModel):
     privacy: str
 
 
-class GetRecordingsResponse(BaseModel):
-    recordings: List[str]
+router = APIRouter(prefix="/rooms")
 
 
-router = APIRouter(prefix="/daily")
-
-
-@router.post("/rooms", response_model=RoomCreateResponse)
+@router.post("/", response_model=RoomCreateResponse)
 async def create():
     try:
         room_info = await create_room()

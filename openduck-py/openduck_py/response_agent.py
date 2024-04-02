@@ -210,8 +210,7 @@ class WavAppender:
     def log(self):
         print("Logging audio to Slack", LOG_TO_SLACK, self.wav_file_path, flush=True)
         if LOG_TO_SLACK:
-            pass
-            # log_audio_to_slack(self.wav_file_path)
+            log_audio_to_slack(self.wav_file_path)
 
 
 class ResponseAgent:
