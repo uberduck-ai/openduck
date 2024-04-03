@@ -425,12 +425,12 @@ class ResponseAgent:
         await db.commit()
 
     async def start_response(self, transcription: str):
+        self.is_responding = True
         try:
             async with SessionAsync() as db:
                 t_0 = time()
 
                 print("TRANSCRIPTION: ", transcription, flush=True)
-                self.is_responding = True
 
                 t_asr = time()
                 await log_event(
