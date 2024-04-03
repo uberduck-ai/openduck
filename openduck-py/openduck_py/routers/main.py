@@ -25,6 +25,8 @@ app.add_middleware(
         "https://openduck.ai",
         "https://b898bccd7757.ngrok.app",
         "https://uberduck.ngrok.app",
+        "https://app.uberduck.ai",
+        "https://uberduck.ai",
     ],
     allow_credentials=True,
     allow_methods=["*"],
