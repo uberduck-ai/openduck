@@ -324,37 +324,37 @@ class ResponseAgent:
             audio_16k_chunk = audio_16k_np[i:upper]
             vad_result = self.vad(audio_16k_chunk)
             if vad_result:
-                # TODO (Matthew): Can we send telemetry via an API instead of saving to a database?
                 async with SessionAsync() as db:
                     if "end" in vad_result:
                         print("end of speech detected.")
                         self.time_of_last_activity = time()
                         await log_event(db, self.session_id, "detected_end_of_speech")
-                        if self.response_task is None or self.response_task.done():
-                            audio_data = np.concatenate(self.audio_data)
-                            transcription = await _transcribe(audio_data)
-                            if transcription:
-                                await log_event(
-                                    db,
-                                    self.session_id,
-                                    "started_response",
-                                    audio=audio_data,
-                                )
-                                self.response_task = asyncio.create_task(
-                                    self.start_response(transcription)
-                                )
-                        else:
-                            print("already responding")
+
+                        audio_data = np.concatenate(self.audio_data)
+                        transcription = await _transcribe(audio_data)
+                        if not transcription:
+                            continue
+
+                        # Interrupt the current task if it's still running
+                        if (
+                            self.response_task
+                            and not self.response_task.done()
+                            and self.is_responding
+                        ):
+                            await log_event(db, self.session_id, "interrupted_response")
+                            await self.interrupt(self.response_task)
+
+                        await log_event(
+                            db, self.session_id, "started_response", audio=audio_data
+                        )
+                        self.response_task = asyncio.create_task(
+                            self.start_response(transcription)
+                        )
+
                     if "start" in vad_result:
                         print("start of speech detected.")
                         self.time_of_last_activity = time()
                         await log_event(db, self.session_id, "detected_start_of_speech")
-                        if self.response_task and not self.response_task.done():
-                            if self.is_responding:
-                                await log_event(
-                                    db, self.session_id, "interrupted_response"
-                                )
-                                await self.interrupt(self.response_task)
             i = upper
 
     async def _generate_and_speak(
