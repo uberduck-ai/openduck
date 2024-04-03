@@ -42,6 +42,30 @@ with open("aec-cartoon-degraded.wav", "wb") as f:
         ).content
     )
 
+personas = {
+    "podcast": {
+        "voice": ELEVENLABS_VIKRAM,
+        "voice_provider": "elevenlabs",
+        "username": "Vikram (AI)",
+        "prompt": "podcast.txt",
+        "speak_first": True,
+    },
+    "comedy": {
+        "voice": "alloy",
+        "voice_provider": "openai",
+        "username": "Emily (AI)",
+        "prompt": "comedy.txt",
+        "speak_first": True,
+    },
+    "todo": {
+        "voice": "onyx",
+        "voice_provider": "openai",
+        "username": "Alex (AI)",
+        "prompt": "todo.txt",
+        "speak_first": True,
+    },
+}
+
 audio_router = APIRouter(prefix="/audio")
 
 Daily.init()
@@ -126,10 +150,13 @@ async def create_room_and_start(request: StartCallRequest):
         target=run_connect_daily,
         kwargs=dict(
             room_url=room_info["url"],
-            username="Vikram (AI)",
-            prompt=f"{request.prompt}.txt",
-            voice_id=ELEVENLABS_VIKRAM,
-            speak_first=True,
+            username=personas[request.prompt]["username"],
+            prompt=personas[request.prompt]["prompt"],
+            tts_config=TTSConfig(
+                provider=personas[request.prompt]["voice_provider"],
+                voice_id=personas[request.prompt]["voice"],
+            ),
+            speak_first=personas[request.prompt]["speak_first"],
             context=context,
             room_id=room_info["id"],
         ),
@@ -230,7 +257,7 @@ async def connect_daily(
     room="https://matthewkennedy5.daily.co/Od7ecHzUW4knP6hS5bug",
     username: str = "host (AI)",
     system_prompt="system-prompt",
-    voice_id: str = None,
+    tts_config: TTSConfig = None,
     speak_first: bool = False,
     context: Optional[Dict[str, str]] = None,
     record: bool = True,
@@ -280,11 +307,12 @@ async def connect_daily(
     }
     if context is not None:
         base_context.update(context)
+
     responder = ResponseAgent(
         session_id=session_id,
         record=record,
         input_audio_format="int16",
-        tts_config=TTSConfig(provider="openai"),
+        tts_config=tts_config,
         # tts_config=TTSConfig(provider="elevenlabs", voice_id=voice_id),
         # tts_config=TTSConfig(provider="azure"),
         system_prompt=system_prompt,
@@ -359,7 +387,7 @@ def run_connect_daily(
     room_url: str,
     username: str,
     prompt: str,
-    voice_id: Optional[str] = None,
+    tts_config: Optional[TTSConfig] = None,
     speak_first: bool = False,
     context: Optional[Dict[str, str]] = None,
     room_id: str = None,
@@ -369,7 +397,7 @@ def run_connect_daily(
             room=room_url,
             username=username,
             system_prompt=prompt,
-            voice_id=voice_id,
+            tts_config=tts_config,
             speak_first=speak_first,
             context=context,
             room_id=room_id,

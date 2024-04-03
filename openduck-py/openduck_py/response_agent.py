@@ -496,9 +496,13 @@ class ResponseAgent:
                     response_text, voice_id=self.tts_config.voice_id
                 )
             elif self.tts_config.provider == "openai":
-                audio_bytes_iter = aio_openai_tts(response_text)
+                audio_bytes_iter = aio_openai_tts(
+                    response_text, voice=self.tts_config.voice_id
+                )
             elif self.tts_config.provider == "azure":
-                audio_bytes_iter = aio_azure_tts(response_text)
+                audio_bytes_iter = aio_azure_tts(
+                    response_text, voice_name=self.tts_config.voice_id
+                )
             elif self.tts_config.provider == "gptsovits":
                 audio_bytes_iter = aio_gptsovits_tts(
                     response_text, voice_ref=self.tts_config.voice_id
