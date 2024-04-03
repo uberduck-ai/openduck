@@ -424,17 +424,12 @@ class ResponseAgent:
         chat.history_json["messages"] = messages
         await db.commit()
 
-    async def start_response(self, transcription):
+    async def start_response(self, transcription: str):
         try:
             async with SessionAsync() as db:
                 t_0 = time()
 
                 print("TRANSCRIPTION: ", transcription, flush=True)
-
-                if transcription and self.is_responding:
-                    await log_event(db, self.session_id, "interrupted_response")
-                    await self.interrupt(self.response_task)
-
                 self.is_responding = True
 
                 t_asr = time()
