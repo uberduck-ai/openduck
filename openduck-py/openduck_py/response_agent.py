@@ -331,21 +331,30 @@ class ResponseAgent:
                         self.time_of_last_activity = time()
                         await log_event(db, self.session_id, "detected_end_of_speech")
                         if self.response_task is None or self.response_task.done():
-                            self.response_task = asyncio.create_task(
-                                self.start_response(self.audio_data)
-                            )
+                            audio_data = np.concatenate(self.audio_data)
+                            transcription = await _transcribe(audio_data)
+                            if transcription:
+                                await log_event(
+                                    db,
+                                    self.session_id,
+                                    "started_response",
+                                    audio=audio_data,
+                                )
+                                self.response_task = asyncio.create_task(
+                                    self.start_response(transcription)
+                                )
                         else:
                             print("already responding")
                     if "start" in vad_result:
                         print("start of speech detected.")
                         self.time_of_last_activity = time()
                         await log_event(db, self.session_id, "detected_start_of_speech")
-                        # if self.response_task and not self.response_task.done():
-                        #     if self.is_responding:
-                        #         await log_event(
-                        #             db, self.session_id, "interrupted_response"
-                        #         )
-                        #         await self.interrupt(self.response_task)
+                        if self.response_task and not self.response_task.done():
+                            if self.is_responding:
+                                await log_event(
+                                    db, self.session_id, "interrupted_response"
+                                )
+                                await self.interrupt(self.response_task)
             i = upper
 
     async def _generate_and_speak(
@@ -415,20 +424,11 @@ class ResponseAgent:
         chat.history_json["messages"] = messages
         await db.commit()
 
-    async def start_response(self, audio_data: List[np.ndarray]):
-        audio_data = np.concatenate(audio_data)
+    async def start_response(self, transcription):
         try:
             async with SessionAsync() as db:
-                await log_event(
-                    db, self.session_id, "started_response", audio=audio_data
-                )
                 t_0 = time()
 
-                transcription = (
-                    self.transcript
-                    if ASR_METHOD == "deepgram"
-                    else await _transcribe(audio_data)
-                )
                 print("TRANSCRIPTION: ", transcription, flush=True)
 
                 if transcription and self.is_responding:
