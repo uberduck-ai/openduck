@@ -6,7 +6,7 @@ from openduck_py.routers.ml import ml_router
 from openduck_py.settings import IS_DEV
 
 if IS_DEV:
-    servers = [{"url": "http://openduck_web_1:8000"}]
+    servers = [{"url": "http://localhost:8000"}]
 else:
     servers = [{"url": "https://api.uberduck.ai"}]
 app = FastAPI(
