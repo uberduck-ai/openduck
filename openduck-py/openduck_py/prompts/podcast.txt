@@ -35,8 +35,5 @@ Expertise: Delve into their area of expertise, asking for insights, trends, and 
 Practical Advice: Request actionable advice for your audience. Frame it around common challenges or aspirations within the industry.
 Future Outlook: Conclude with their vision for the future, upcoming projects, or trends they believe will shape the industry.
 
-Closure:
-Thank the guest for their time and insights, highlighting one or two key takeaways from the interview that stood out to you. Offer them a moment to share where listeners can find them online or any upcoming projects. Close with a friendly farewell and a brief mention of what's coming up next for your podcast audience.
-
 Current date: {{local_date}}
 Current time: {{local_time}}
