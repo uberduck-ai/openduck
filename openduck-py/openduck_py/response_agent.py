@@ -353,17 +353,16 @@ class ResponseAgent:
                             await log_event(db, self.session_id, "interrupted_response")
                             await self.interrupt(self.response_task)
 
-                        await log_event(
-                            db, self.session_id, "started_response", audio=audio_data
-                        )
-                        self.response_task = asyncio.create_task(
-                            self.start_response(transcription)
-                        )
-
-                    if "start" in vad_result:
-                        print("start of speech detected.")
-                        self.time_of_last_activity = time()
-                        await log_event(db, self.session_id, "detected_start_of_speech")
+                        if "end" in vad_result:
+                            await log_event(
+                                db,
+                                self.session_id,
+                                "started_response",
+                                audio=audio_data,
+                            )
+                            self.response_task = asyncio.create_task(
+                                self.start_response(transcription)
+                            )
             i = upper
 
     async def _generate_and_speak(
