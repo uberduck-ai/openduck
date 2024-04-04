@@ -243,7 +243,6 @@ class ResponseAgent:
         self.response_task: Optional[asyncio.Task] = None
         self.interrupt_event = asyncio.Event()
         self.system_prompt = system_prompt
-        self.speech_has_started = False
 
         if context is None:
             context = {}
@@ -309,6 +308,7 @@ class ResponseAgent:
             audio_16k_np = audio_16k_np.astype(np.float32)
 
         # TODO: Only append to audio_data if start of speech has been detected.
+        self.audio_data.append(audio_16k_np)
         if self.record:
             if self._time_of_last_record is None:
                 self._time_of_last_record = time()
@@ -326,32 +326,29 @@ class ResponseAgent:
             vad_result = self.vad(audio_16k_chunk)
             if vad_result:
                 async with SessionAsync() as db:
+
                     transcription = ""
                     if "start" in vad_result or "end" in vad_result:
                         self.time_of_last_activity = time()
-                        if "start" in vad_result:
-                            self.speech_has_started = True
-                            print("Detected start of speech", flush=True)
-                            # await log_event(
-                            #     db,
-                            #     self.session_id,
-                            #     "detected_start_of_speech",
-                            #     audio=audio_data,
-                            # )
-                        else:
-                            self.speech_has_started = False
-                            print("Detected end of speech", flush=True)
-                            # await log_event(
-                            #     db,
-                            #     self.session_id,
-                            #     "detected_end_of_speech",
-                            #     audio=audio_data,
-                            # )
-
-                        if self.speech_has_started:
-                            self.audio_data.append(audio_16k_np)
-
                         audio_data = np.concatenate(self.audio_data)
+
+                        if "start" in vad_result:
+                            print("Detected start of speech", flush=True)
+                            await log_event(
+                                db,
+                                self.session_id,
+                                "detected_start_of_speech",
+                                audio=audio_data,
+                            )
+                        else:
+                            print("Detected end of speech", flush=True)
+                            await log_event(
+                                db,
+                                self.session_id,
+                                "detected_end_of_speech",
+                                audio=audio_data,
+                            )
+
                         transcription = await _transcribe(audio_data)
                         if not transcription:
                             continue
