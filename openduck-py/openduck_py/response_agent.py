@@ -243,6 +243,7 @@ class ResponseAgent:
         self.response_task: Optional[asyncio.Task] = None
         self.interrupt_event = asyncio.Event()
         self.system_prompt = system_prompt
+        self.speech_has_started = False
 
         if context is None:
             context = {}
@@ -325,10 +326,18 @@ class ResponseAgent:
             vad_result = self.vad(audio_16k_chunk)
             if vad_result:
                 async with SessionAsync() as db:
-                    if "end" in vad_result:
-                        print("end of speech detected.")
+                    transcription = ""
+                    if "start" in vad_result or "end" in vad_result:
                         self.time_of_last_activity = time()
-                        await log_event(db, self.session_id, "detected_end_of_speech")
+                        if "start" in vad_result:
+                            self.speech_has_started = True
+                            print("Detected start of speech", flush=True)
+                        else:
+                            self.speech_has_started = False
+                            print("Detected end of speech", flush=True)
+
+                        if self.speech_has_started:
+                            self.audio_data.append(audio_16k_np)
 
                         audio_data = np.concatenate(self.audio_data)
                         transcription = await _transcribe(audio_data)
@@ -344,17 +353,16 @@ class ResponseAgent:
                             await log_event(db, self.session_id, "interrupted_response")
                             await self.interrupt(self.response_task)
 
-                        await log_event(
-                            db, self.session_id, "started_response", audio=audio_data
-                        )
-                        self.response_task = asyncio.create_task(
-                            self.start_response(transcription)
-                        )
-
-                    if "start" in vad_result:
-                        print("start of speech detected.")
-                        self.time_of_last_activity = time()
-                        await log_event(db, self.session_id, "detected_start_of_speech")
+                        if "end" in vad_result:
+                            await log_event(
+                                db,
+                                self.session_id,
+                                "started_response",
+                                audio=audio_data,
+                            )
+                            self.response_task = asyncio.create_task(
+                                self.start_response(transcription)
+                            )
             i = upper
 
     async def _generate_and_speak(
