@@ -332,21 +332,9 @@ class ResponseAgent:
                         if "start" in vad_result:
                             self.speech_has_started = True
                             print("Detected start of speech", flush=True)
-                            # await log_event(
-                            #     db,
-                            #     self.session_id,
-                            #     "detected_start_of_speech",
-                            #     audio=audio_data,
-                            # )
                         else:
                             self.speech_has_started = False
                             print("Detected end of speech", flush=True)
-                            # await log_event(
-                            #     db,
-                            #     self.session_id,
-                            #     "detected_end_of_speech",
-                            #     audio=audio_data,
-                            # )
 
                         if self.speech_has_started:
                             self.audio_data.append(audio_16k_np)
